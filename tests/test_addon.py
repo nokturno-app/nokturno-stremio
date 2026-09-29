@@ -2897,6 +2897,12 @@ class TestAktualizaceZFormulare(unittest.TestCase):
                          zavadec.VYCHOZI_UPDATE_URL)
 
 
+class TestPodminky(unittest.TestCase):
+    def test_terms_vede_na_nokturno_stream(self):
+        odp = router().route("/terms", ZAKLAD)
+        self.assertEqual((odp.status, odp.location), (302, "https://nokturno.stream/terms"))
+
+
 class TestPrepinacStatistik(unittest.TestCase):
     def test_uklada_do_slozky_a_prepne_hned(self):
         from nokturno import soukroma

@@ -1418,7 +1418,7 @@ class TestFormularBezCizihoSkriptu(unittest.TestCase):
         from nokturno.server import Handler
 
         class Smerovac:
-            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio"):
+            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
                 return Odpoved(html="<p>x</p>") if cesta.endswith("/configure") else Odpoved(data={"ok": True})
         srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         srv.router = Smerovac()
@@ -1953,7 +1953,7 @@ class TestHeadAProxyKodovani(unittest.TestCase):
         volani = []
 
         class Smerovac:
-            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio"):
+            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
                 volani.append(cesta)
                 return Odpoved(data={"ok": True})
         srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -2794,3 +2794,95 @@ class TestZavadecAdresaPoslechu(unittest.TestCase):
         h.headers = {"Host": "nokturno.example.cz", "X-Forwarded-Proto": "https"}
         h.server = mock.Mock(schema="http", server_address=("127.0.0.1", 7140))
         self.assertEqual(h._zaklad(), "https://nokturno.example.cz")
+
+
+class TestSoukromaInstance(unittest.TestCase):
+    """`soukroma`: cesty doplňku jen s povoleným otiskem, formulář a POST jen mimo Cloudflare."""
+
+    def setUp(self):
+        from nokturno import soukroma
+        self.soukroma = soukroma
+        self.tmp = tempfile.mkdtemp()
+        self.r = router()
+        self.r.enginy_test.data_dir = self.tmp
+        self.r.povolena = soukroma.Povolena(self.tmp)
+
+    def povol(self, kousek=KOUSEK, **hlavicky):
+        return self.r.post("/povolit", kousek, {"X-Nokturno": "1", **hlavicky})
+
+    def test_nepovolene_nastaveni_dostane_prazdne_403(self):
+        for cesta in (f"/c/{KOUSEK}/manifest.json", f"/c/{KOUSEK}/stream/movie/tt0133093.json",
+                      f"/c/{KOUSEK}/play/abc", f"/c/{KOUSEK}/catalog/movie/x.json", f"/c/{KOUSEK}/meta/movie/tt1.json",
+                      "/manifest.json", "/stream/movie/tt0133093.json", "/c/nesmysl/manifest.json"):
+            odp = self.r.route(cesta, ZAKLAD)
+            self.assertEqual((odp.status, odp.body[0]), (403, b""), cesta)
+
+    def test_povolene_projde(self):
+        self.assertEqual(self.povol().status, 200)
+        self.assertEqual(self.r.route(f"/c/{KOUSEK}/manifest.json", ZAKLAD, z_proxy=True).status, 200)
+        self.assertEqual(self.r.route(f"/c/{KOUSEK}/stream/movie/tt0133093.json", ZAKLAD, z_proxy=True).status, 200)
+        self.assertEqual(self.r.route(f"/c/{KOUSEK_HS}/manifest.json", ZAKLAD).status, 403)
+        with open(os.path.join(self.tmp, "povolena.txt"), encoding="utf-8") as f:
+            self.assertEqual(f.read().split(), [self.soukroma.otisk(NASTAVENI)])
+
+    def test_otisk_bez_identity(self):
+        self.povol()
+        s_id = config.encode({**NASTAVENI, config.ID_KLIC: "x"})
+        self.assertEqual(self.soukroma.otisk_z_textu(f"https://a.b/c/{s_id}/manifest.json"), self.soukroma.otisk(NASTAVENI))
+
+    def test_povolit_pres_cloudflare_ani_bez_hlavicky_nejde(self):
+        self.assertEqual(self.povol(**{"Cf-Connecting-IP": "1.2.3.4"}).status, 403)
+        self.assertEqual(self.r.post("/povolit", KOUSEK, {}).status, 403)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "povolena.txt")))
+
+    def test_formular_pres_cloudflare_ne_z_tailnetu_ano(self):
+        self.assertEqual(self.r.route("/configure", ZAKLAD, z_proxy=True).status, 403)
+        self.assertEqual(self.r.route(f"/c/{KOUSEK}/check", ZAKLAD, z_proxy=True).status, 403)
+        self.assertEqual(self.r.route("/cztor/pin", ZAKLAD, z_proxy=True).status, 403)
+        self.assertEqual(self.r.route("/health", ZAKLAD, z_proxy=True).status, 200)
+        html = self.r.route("/configure", ZAKLAD).html
+        self.assertIn('"soukroma":true', html.replace(" ", ""))
+        self.assertIn('"sprava":true', html.replace(" ", ""))
+
+    def test_bez_soukrome_jako_driv(self):
+        r = router()
+        self.assertEqual(r.route(f"/c/{KOUSEK}/manifest.json", ZAKLAD, z_proxy=True).status, 200)
+        self.assertEqual(r.post("/povolit", KOUSEK, {"X-Nokturno": "1"}).status, 404)
+        self.assertIn('"soukroma":false', r.route("/configure", ZAKLAD).html.replace(" ", ""))
+
+    def test_rucni_zapis_plati_hned(self):
+        with open(os.path.join(self.tmp, "povolena.txt"), "w", encoding="utf-8") as f:
+            f.write("# muj\n" + self.soukroma.otisk(NASTAVENI) + "\n")
+        self.assertEqual(self.r.route(f"/c/{KOUSEK}/manifest.json", ZAKLAD).status, 200)
+
+
+class TestPrepinacStatistik(unittest.TestCase):
+    def test_uklada_do_slozky_a_prepne_hned(self):
+        from nokturno import soukroma
+        tmp = tempfile.mkdtemp()
+        r = router()
+        r.enginy_test.data_dir = tmp
+        r.statistiky = mock.Mock(zapnuto=True)
+        r.pady = mock.Mock(zapnuto=True)
+        odp = r.post("/aplikace", json.dumps({"stats": False}), {"X-Nokturno": "1"})
+        self.assertEqual(odp.data, {"soukroma": False, "stats": False, "crash_reports": True})
+        self.assertFalse(r.statistiky.zapnuto)
+        self.assertEqual(soukroma.nacti_aplikaci(tmp), {"stats": False})
+        self.assertEqual(r.post("/aplikace", "{}", {"X-Nokturno": "1", "Cf-Connecting-IP": "1.1.1.1"}).status, 403)
+        self.assertIn('"sprava":false', r.route("/configure", ZAKLAD, z_proxy=True).html.replace(" ", ""))
+
+
+class TestZavadecSoukroma(unittest.TestCase):
+    def test_prostredi_a_povolit(self):
+        sys.path.insert(0, str(ROOT / "baleni"))
+        import zavadec
+        self.assertEqual(zavadec.prostredi(dict(zavadec.VYCHOZI), "/tmp")["NOKTURNO_SOUKROMA"], "0")
+        self.assertEqual(zavadec.prostredi({**zavadec.VYCHOZI, "soukroma": True}, "/tmp")["NOKTURNO_SOUKROMA"], "1")
+        self.assertEqual(zavadec.Zavadec({**zavadec.VYCHOZI, "host": "127.0.0.1"}, tempfile.mkdtemp()).health_host,
+                         "127.0.0.1")
+        data = tempfile.mkdtemp()
+        with mock.patch.dict(os.environ, {"NOKTURNO_VESTAVENY": str(ROOT)}):
+            self.assertEqual(zavadec.main(["--data", data, "--povolit", f"https://x.cz/c/{KOUSEK}/manifest.json"]), 0)
+            self.assertEqual(zavadec.main(["--data", data, "--povolit", "nesmysl"]), 2)
+        with open(os.path.join(data, "cache", "povolena.txt"), encoding="utf-8") as f:
+            self.assertEqual(f.read().strip(), config.fingerprint(NASTAVENI))

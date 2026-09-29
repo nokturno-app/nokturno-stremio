@@ -646,6 +646,21 @@
     </div>
   </section>
 
+  <!-- ============================== APLIKACE ============================== -->
+  <section id="aplikace" hidden>
+    <h2><b>⚙</b>Aplikácia na tomto zariadení</h2>
+    <p class="popis">Voľby samotnej aplikácie Nokturno, nie adresy doplnku. Platia hneď a pre všetkých, kto túto aplikáciu používajú.</p>
+    <label class="prepinac">
+      <input type="checkbox" id="app-stats">
+      <span><strong>Posielať anonymné štatistiky</strong><small>Verzia, zapnuté zdroje a tituly, pri ktorých sa otvorili streamy. Bez účtov, hesiel a adresy doplnku.</small></span>
+    </label>
+    <label class="prepinac">
+      <input type="checkbox" id="app-pady">
+      <span><strong>Posielať hlásenia o pádoch</strong><small>Pri chybe v doplnku odíde technický záznam bez účtov a hesiel, aby sme ju mohli opraviť.</small></span>
+    </label>
+    <div class="stav" id="app-stav"></div>
+  </section>
+
   <!-- ============================== FAQ ============================== -->
   <section id="otazky" class="faq">
     <h2><b>?</b>Časté otázky</h2>
@@ -751,6 +766,7 @@
     <button type="button" class="hlavni" id="instalovat"><span class="dlouhe">Pridať do Stremia</span><span class="kratke">Stremio</span></button>
     <button type="button" class="hlavni" id="nuvio"><span class="dlouhe">Pridať do Nuvia</span><span class="kratke">Nuvio</span></button>
     <button type="button" id="kopirovat">Skopírovať<span class="dlouhe"> adresu</span></button>
+    <button type="button" id="povolit" hidden><span class="dlouhe">Povoliť na tomto serveri</span><span class="kratke">Povoliť</span></button>
     <span class="akce-souhrn" id="souhrn-zdroju"></span>
   </div>
   <div class="stav" id="stav"></div>
@@ -1287,6 +1303,32 @@ $("kopirovat").addEventListener("click", async () => {
     nastavStav("Kopírovanie prehliadač nepovolil – adresu označ a skopíruj ručne z rámčeka.", true);
   }
 });
+
+// --- aplikace: soukromá instance a statistiky (jen mimo veřejnou adresu) ---
+const APLIKACE = __APLIKACE__;
+const posliServeru = (cesta, telo) => fetch(ZAKLAD + cesta, {method: "POST", headers: {"X-Nokturno": "1"}, body: telo})
+  .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+if (APLIKACE.sprava) {
+  $("aplikace").hidden = false;
+  $("app-stats").checked = APLIKACE.stats;
+  $("app-pady").checked = APLIKACE.crash_reports;
+  for (const [id, klic] of [["app-stats", "stats"], ["app-pady", "crash_reports"]]) {
+    $(id).addEventListener("change", () => posliServeru("/aplikace", JSON.stringify({[klic]: $(id).checked}))
+      .then(() => { $("app-stav").textContent = "Uložené."; })
+      .catch(() => { $("app-stav").textContent = "Voľbu sa nepodarilo uložiť."; }));
+  }
+}
+if (APLIKACE.sprava && APLIKACE.soukroma) {
+  $("povolit").hidden = false;
+  $("povolit").addEventListener("click", pripomen);
+  $("povolit").addEventListener("click", () => {
+    const chyba = problem();
+    if (chyba) { nastavStav(chyba, true); return; }
+    posliServeru("/povolit", kousek())
+      .then(() => nastavStav("Adresa je na tomto serveri povolená. Teraz ju pridaj do aplikácie."))
+      .catch(() => nastavStav("Povoliť sa nepodarilo – otvor formulár priamo na serveri, nie cez verejnú adresu.", true));
+  });
+}
 </script>
 <script>
 (() => {

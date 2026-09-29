@@ -13,9 +13,11 @@ stáhne zip, ověří otisk, rozbalí ho vedle a doplněk restartuje. Když nov�
 Zip má na nejvyšší úrovni složku `nokturno/`. Vyrábí ho `baleni/balik.sh`.
 
 Spuštění:  nokturno [--host 0.0.0.0] [--port 7140] [--https-port 7141] [--bez-https] [--data SLOŽKA]
+           nokturno --povolit <adresa doplňku>     (soukromá instance, viz nokturno/soukroma.py)
 
 `host` (v nokturno.json i --host) je adresa poslechu. Za reverzní proxy (VPS s doménou)
-127.0.0.1, ať port doplňku není vidět z internetu.
+127.0.0.1, ať port doplňku není vidět z internetu. `soukroma` zapne soukromou instanci:
+doplněk obslouží jen nastavení povolená v `<data>/cache/povolena.txt`.
 """
 import argparse
 import hashlib
@@ -40,7 +42,7 @@ VYCHOZI_UPDATE_URL = "https://raw.githubusercontent.com/nokturno-app/nokturno-st
 KONTROLA_S = 6 * 3600
 START_S = 60
 HA_VOLBY = "/data/options.json"
-VYCHOZI = {"host": "0.0.0.0", "port": 7140, "https_port": 7141, "enable_https": True, "tmdb_key": "",
+VYCHOZI = {"host": "0.0.0.0", "soukroma": False, "port": 7140, "https_port": 7141, "enable_https": True, "tmdb_key": "",
            "stats": True, "crash_reports": True, "update_url": ""}
 
 
@@ -111,6 +113,7 @@ def prostredi(volby, data):
     env = dict(os.environ)
     env.update({
         "NOKTURNO_HOST": str(volby.get("host") or "0.0.0.0"),
+        "NOKTURNO_SOUKROMA": "1" if volby.get("soukroma") else "0",
         "NOKTURNO_PORT": str(volby.get("port") or 7140),
         "NOKTURNO_DATA": os.path.join(data, "cache"),
         "NOKTURNO_HTTPS_PORT": str(volby.get("https_port") or 7141) if volby.get("enable_https", True) else "",
@@ -214,6 +217,8 @@ class Zavadec:
         self.volby = volby
         self.data = data
         self.port = int(volby.get("port") or 7140)
+        listen = str(volby.get("host") or "0.0.0.0")
+        self.health_host = "127.0.0.1" if listen in ("0.0.0.0", "::") else listen
         self.verze = Verze(data, volby.get("update_url"))
         self.proces = None
         self.konec = threading.Event()
@@ -242,7 +247,7 @@ class Zavadec:
             if self.proces is None or self.proces.poll() is not None:
                 return False
             try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health", timeout=3) as r:
+                with urllib.request.urlopen(f"http://{self.health_host}:{self.port}/health", timeout=3) as r:
                     if r.status == 200:
                         return True
             except OSError:
@@ -314,12 +319,26 @@ def spust_v_procesu(data, volby=None):
     return sluzba(slozka)
 
 
+def povolit(text, slozka):
+    """`nokturno --povolit <adresa>`: připíše otisk do povolena.txt; běžící doplněk ho vezme hned."""
+    sys.path.insert(0, Verze(os.path.dirname(slozka), "").aktualni()[1])
+    from nokturno import soukroma   # noqa: PLC0415 – z vestavěné nebo stažené verze
+    otisk = soukroma.otisk_z_textu(text)
+    if not otisk:
+        print("Adrese nerozumím – vlož celou adresu doplňku (…/c/…/manifest.json).", file=sys.stderr)
+        return 2
+    soukroma.Povolena(slozka).pridej(otisk)
+    print(f"Povoleno: {otisk}")
+    return 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["--sluzba"]:
         return sluzba(argv[1])
     ap = argparse.ArgumentParser(prog="nokturno", description="Nokturno pro Stremio a Nuvio")
     ap.add_argument("--host", help="adresa poslechu (za reverzní proxy 127.0.0.1)")
+    ap.add_argument("--povolit", metavar="ADRESA", help="soukromá instance: povolit adresu doplňku (nebo otisk) a skončit")
     ap.add_argument("--port", type=int)
     ap.add_argument("--https-port", type=int)
     ap.add_argument("--bez-https", action="store_true")
@@ -328,6 +347,8 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
     data = args.data or datova_slozka()
     os.makedirs(data, exist_ok=True)
+    if args.povolit:
+        return povolit(args.povolit, os.path.join(data, "cache"))
     volby = nacti_volby(data)
     if args.host:
         volby["host"] = args.host

@@ -22,11 +22,11 @@ from .katalogy import Katalogy
 from .core.lib.dash_api import DashApi
 from .identita import Identita
 from .enginy import Enginy
-from .routes import Blokace, VERZE, Router, jazyk_z_hlavicky, klient_z_useragent
+from .routes import Blokace, VERZE, Odpoved, Router, jazyk_z_hlavicky, klient_z_useragent
 from .statistiky import Statistiky
 from .pady import Pady
 from .provoz import Provoz
-from . import cztor, kliky as kliky_zprav, tls
+from . import cztor, kliky as kliky_zprav, soukroma, tls
 
 _LOGGER = logging.getLogger("nokturno")
 
@@ -291,7 +291,8 @@ class Handler(BaseHTTPRequestHandler):
             jazyk = jazyk_z_hlavicky(self.headers.get("Accept-Language"))
             aplikace = klient_z_useragent(self.headers.get("User-Agent"))
             self._posli(self.server.router.route(self.path, self._zaklad(), verejny=verejny, jazyk=jazyk,
-                                                 klient=self._klient(), aplikace=aplikace))
+                                                 klient=self._klient(), aplikace=aplikace,
+                                                 z_proxy=soukroma.z_proxy(self.headers)))
         except (BrokenPipeError, ConnectionResetError):
             # přehrávač si to rozmyslel a zavřel spojení — běžné, ne chyba
             _LOGGER.debug("klient zavřel spojení při %s", bezpecna_cesta(self.path))
@@ -309,6 +310,26 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(500, "Internal Server Error", "Chyba doplňku")
             except Exception:  # noqa: BLE001 – klient už mohl spojení zavřít
                 self.close_connection = True
+        finally:
+            self._nahlas()
+
+    def do_POST(self):
+        """Jen `/povolit` a `/aplikace` z formuláře (viz `Router.post`)."""
+        self._odeslano = False
+        self._zacni()
+        try:
+            delka = int(self.headers.get("Content-Length") or 0)
+            if not 0 <= delka <= 64 * 1024:
+                self._posli(Odpoved(status=413, text=""))
+                return
+            telo = self.rfile.read(delka).decode("utf-8", "replace")
+            self._posli(self.server.router.post(self.path, telo, self.headers))
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception:  # noqa: BLE001 – žádná chyba nesmí ukončit službu
+            _LOGGER.exception("neočekávaná chyba při POST %s", bezpecna_cesta(self.path))
+            if not self._odeslano:
+                self.send_error(500, "Internal Server Error")
         finally:
             self._nahlas()
 
@@ -428,6 +449,11 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
                            blokace=Blokace(soubor=os.path.join(data_dir, "odebrane_identity.txt"),
                                            adresy_soubor=os.path.join(data_dir, "zakazane_adresy.txt")))
     server.pady = Pady.z_prostredi(data_dir, VERZE)
+    server.router.pady = server.pady
+    server.router.nastav_aplikaci(soukroma.nacti_aplikaci(data_dir))   # volby z /configure mají přednost
+    if os.environ.get("NOKTURNO_SOUKROMA", "").strip().lower() in ("1", "true", "ano", "yes"):
+        server.router.povolena = soukroma.Povolena(data_dir)
+        _LOGGER.info("soukromá instance: povolená nastavení v %s", server.router.povolena.cesta)
     server.pady.odesli()   # co zůstalo ve frontě z minula (server nebo síť tehdy neběžely)
     server.provoz = provoz
     server.router.zprava = server.provoz.zprava

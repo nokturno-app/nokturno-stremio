@@ -65,7 +65,9 @@ a Home Assistant: náhodný identifikátor nastavení, verzi, které zdroje jsou
 zapnuté a u kterých titulů se otevřely streamy – nejvýš jednou za 6 hodin.
 Jedna „instalace" je jedno nastavení doplňku (vlastní adresa), ne celý server.
 Účty ani adresa doplňku se neposílají. Vypnutí: `NOKTURNO_STATS=0` (v aplikaci volba `"stats": false`
-v `nokturno.json`, zavaděč proměnnou prostředí přepíše podle ní; v APK soubor uživatel upravit nemůže). I po vypnutí se nejvýš jednou za 6 hodin pošle jen náhodný identifikátor a verze, aby bylo vidět, že nastavení žije – žádné tituly ani zdroje.
+v `nokturno.json`, zavaděč proměnnou prostředí přepíše podle ní). Od 9.0.4 jde statistiky i hlášení o pádech
+vypnout přímo na `/configure` (sekce *Aplikace na tomhle zařízení*, i na Androidu); volba se uloží do
+`<data>/cache/aplikace.json`, má přednost před `nokturno.json` a platí hned. Přes Cloudflare (`Cf-Connecting-IP`) ji změnit nejde. I po vypnutí se nejvýš jednou za 6 hodin pošle jen náhodný identifikátor a verze, aby bylo vidět, že nastavení žije – žádné tituly ani zdroje.
 
 ## Hlášení o pádech
 
@@ -74,6 +76,33 @@ služba pošle na stejný server krátké hlášení: typ chyby, místo v kódu,
 a posledních pár řádků vlastního logu. Adresy, účty, IP a nastavení z adresy
 doplňku se předem vymažou. Stejná chyba odejde nejvýš jednou za verzi. Id je
 náhodné, jedno na server (`<data>/pady/id`). Vypnutí: `NOKTURNO_CRASH_REPORTS=0` (v aplikaci `"crash_reports": false`).
+
+## Soukromá instance (adresa doplňku v internetu)
+
+Adresa doplňku může být na veřejné doméně (Cloudflare Tunnel, reverzní proxy), aniž by ji mohl
+použít kdokoli. V `nokturno.json`:
+
+```json
+{"host": "127.0.0.1", "soukroma": true}
+```
+
+- `host` je adresa poslechu (výchozí `0.0.0.0`, za proxy `127.0.0.1`), v příkazové řádce `--host`.
+- `soukroma` (prostředí `NOKTURNO_SOUKROMA=1`): cesty doplňku (`/c/<nastavení>/manifest.json`, `stream`,
+  `catalog`, `meta`, `play`, i bez `/c/`) obslouží jen nastavení, jejichž otisk je v `<data>/cache/povolena.txt`
+  (jeden otisk na řádek, `#` komentář, ruční úprava platí bez restartu). Ostatní dostanou 403 bez těla.
+  `/health` jde vždy. Otisk je `config.fingerprint` nastavení bez tokenu identity.
+- Požadavek s hlavičkou `Cf-Connecting-IP` (přišel přes Cloudflare) smí jen na cesty doplňku, formulář,
+  `/check`, `/cztor/*`, `/identita*`, `/z/`, `/terms` ani POST nedostane. Hlavní ochrana má být v proxy,
+  tohle je druhá pojistka.
+
+Jak nastavení povolit:
+
+1. Na `/configure` (otevřeném mimo veřejnou adresu, třeba v Tailscale) vyrob adresu a klikni na
+   **Povolit na tomhle serveru** (`POST /povolit`, jen s hlavičkou `X-Nokturno`, ať ho nepošle cizí web).
+2. `nokturno --povolit <adresa doplňku>` (bere i samotný otisk), s `--data`, když datová složka není výchozí.
+3. Ručně připsat otisk do `povolena.txt`.
+
+Změněné nastavení je nová adresa i nový otisk, povolit ho je potřeba znovu.
 
 ## Vlastní instance (pro vývojáře a pokročilé)
 

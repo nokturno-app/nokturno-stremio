@@ -9,6 +9,8 @@
     GET /cztor/pin                       nový klíč a PIN pro párování CZtoru (viz cztor.py)
     GET /cztor/poll?k=<klíč>&t=<token>   čeká na potvrzení PINu na cztor.com/activate
     GET /health                          pro kontejner
+    POST /povolit                        soukromá instance: připíše otisk nastavení (viz soukroma.py)
+    POST /aplikace                       statistiky a hlášení o pádech z formuláře
 
 Stremio nemá soubor nastavení — účty se nosí zakódované v cestě adresy, takže
 každý, kdo si doplněk přidá, má vlastní. Server si nic nepamatuje a hledá vždy
@@ -32,6 +34,7 @@ zdroje rovnou ke klientovi a tenhle server se jich nedotkne — do 5.2.25 šla p
 něj a byl tím fakticky veřejná proxy pro cizí úložiště.
 """
 import html as html_lib
+import json
 import ipaddress
 import logging
 import os
@@ -48,7 +51,7 @@ from .core.lib.fastshare_api import FastshareApi
 from .core.lib.prehrajto_api import PrehrajtoApi
 from .core.lib.storage_api import SLOTS, StorageApi
 from .core.lib.cztor_api import CztorError
-from . import config, cztor, mapping, sit
+from . import config, cztor, mapping, sit, soukroma
 from .enginy import PrilisMnohoNovych
 from .identita import Identita
 from . import tls
@@ -59,7 +62,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "9.0.0"
+VERZE = "9.0.4"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián
@@ -406,6 +409,63 @@ class Router:
         # (stream požadavek na tisíce id po řadě) a nafoukla cache adresáře na
         # tolik souborů, že LXC 124 došly inody i sousednímu dashboardu.
         self.blokovane = frozenset(blokovane or ())
+        self.povolena = None   # soukroma.Povolena = soukromá instance (server.vytvor_server)
+        self.pady = None       # pady.Pady, kvůli přepínači na /configure
+
+    # --- soukromá instance a volby aplikace --------------------------------
+    STRANKY = ("", "/", "/configure", "/configure/", "/check")
+    CESTY_DOPLNKU = ("/manifest.json", "/stream/", "/catalog/", "/meta/", "/play/")
+
+    def _soukroma(self, cesta, z_proxy):
+        """Na soukromé instanci: cesty doplňku jen s povoleným otiskem, ostatní jen mimo proxy.
+        None = smí dál, jinak 403 bez vysvětlení."""
+        kousek, zbytek = self._rozdel(cesta)
+        doplnek = zbytek not in self.STRANKY if kousek else zbytek.startswith(self.CESTY_DOPLNKU)
+        if doplnek:
+            options = config.decode(kousek) if kousek else self.enginy.vychozi_options
+            if options is not None and self.povolena.obsahuje(soukroma.otisk(options)):
+                return None
+        elif not z_proxy:
+            return None
+        return Odpoved(status=403, text="", utok=("soukromá instance", None))
+
+    def aplikace(self):
+        return {"soukroma": self.povolena is not None,
+                "stats": bool(self.statistiky and self.statistiky.zapnuto),
+                "crash_reports": bool(self.pady and self.pady.zapnuto)}
+
+    def nastav_aplikaci(self, volby):
+        if "stats" in volby and self.statistiky is not None:
+            self.statistiky.zapnuto = bool(volby["stats"])
+        if "crash_reports" in volby and self.pady is not None:
+            self.pady.zapnuto = bool(volby["crash_reports"])
+
+    def post(self, cesta, telo, headers):
+        """POST jen z formuláře mimo proxy. Vlastní hlavička `X-Nokturno` vynutí u cizího webu
+        preflight, který neprojde (CORS tu není), takže jiná stránka v prohlížeči majitele
+        nastavení nezmění."""
+        cesta = cesta.partition("?")[0]
+        if soukroma.z_proxy(headers) or not headers.get("X-Nokturno"):
+            return Odpoved(status=403, text="")
+        if cesta == "/povolit":
+            if self.povolena is None:
+                return chyba(404, "Instance není soukromá.")
+            otisk = soukroma.otisk_z_textu(telo)
+            if not otisk:
+                return chyba(400, "Nečitelné nastavení.")
+            self.povolena.pridej(otisk)
+            _LOGGER.info("povolené nastavení %s", otisk)
+            return Odpoved(data={"ok": True, "otisk": otisk})
+        if cesta == "/aplikace":
+            try:
+                data = json.loads(telo or "{}")
+                zmeny = {k: bool(data[k]) for k in ("stats", "crash_reports") if k in data}
+            except (ValueError, TypeError):
+                return chyba(400, "Nečitelné volby.")
+            soukroma.uloz_aplikaci(self.enginy.data_dir, zmeny)
+            self.nastav_aplikaci(zmeny)
+            return Odpoved(data=self.aplikace())
+        return chyba(404, "Nic tu není.")
 
     # --- adresy -----------------------------------------------------------
     @staticmethod
@@ -463,7 +523,7 @@ class Router:
                 pass
         return (STATIKA / f"{jmeno}.html").read_text(encoding="utf-8")
 
-    def configure(self, kousek, zaklad, verejny=False, jazyk="cs", klient=""):
+    def configure(self, kousek, zaklad, verejny=False, jazyk="cs", klient="", z_proxy=False):
         """Formulář, který vyrobí adresu s účty. Předvyplní se z adresy, na které stojí."""
         try:
             html = self._stranka("configure", jazyk)
@@ -482,6 +542,7 @@ class Router:
         html = html.replace("__ZAKLAD__", html_lib.escape(zaklad, quote=True))
         html = html.replace("__VERZE__", self.verze)
         html = html.replace("__ID__", self._identita_pro_formular(soucasne, klient))
+        html = html.replace("__APLIKACE__", mapping.json_do_scriptu({**self.aplikace(), "sprava": not z_proxy}))
         return Odpoved(html=html)
 
     def _identita_pro_formular(self, soucasne, klient):
@@ -783,7 +844,7 @@ class Router:
         return Odpoved(status=302, location=skutecna, text="")
 
     # --- rozcestník -------------------------------------------------------
-    def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio"):
+    def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
         """Cesta požadavku na odpověď. `zaklad` je absolutní adresa služby,
         `verejny` říká, že přišel z internetu (viz docstring modulu), `jazyk`
         je jazyk stránek z `Accept-Language` (viz `jazyk_z_hlavicky`), `klient`
@@ -801,6 +862,10 @@ class Router:
         elif jazyk not in JAZYKY:
             jazyk = "cs"
         cesta = urllib.parse.unquote(cesta)
+        if self.povolena is not None and cesta != "/health":
+            odp = self._soukroma(cesta, z_proxy)
+            if odp is not None:
+                return odp
         if cesta == "/health":
             return self.health()
         if cesta == "/terms":
@@ -843,7 +908,7 @@ class Router:
 
         if zbytek in ("", "/", "/configure", "/configure/"):
             if zbytek in ("/configure", "/configure/"):
-                return self.configure(kousek, zaklad, verejny, jazyk, klient)
+                return self.configure(kousek, zaklad, verejny, jazyk, klient, z_proxy)
             return self.uvod(zaklad, jazyk)
 
         if verejny and not kousek:

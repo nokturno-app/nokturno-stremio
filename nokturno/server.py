@@ -445,7 +445,7 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
     dash = dash_lokalne(provoz, enginy.spolecne)
     katalogy = Katalogy(data_dir, os.environ.get("NOKTURNO_TMDB_KEY", ""), dash=dash)
     blokovane = {o.strip() for o in os.environ.get("NOKTURNO_BLOCKED_FINGERPRINTS", "").split(",") if o.strip()}
-    server.router = Router(enginy, predvyplnit=predvyplnit, statistiky=Statistiky.z_prostredi(VERZE),
+    server.router = Router(enginy, predvyplnit=predvyplnit, statistiky=Statistiky.z_prostredi(VERZE, data_dir=data_dir),
                            katalogy=katalogy, blokovane=blokovane, identita=Identita.z_prostredi(),
                            blokace=Blokace(soubor=os.path.join(data_dir, "odebrane_identity.txt"),
                                            adresy_soubor=os.path.join(data_dir, "zakazane_adresy.txt")))

@@ -110,9 +110,24 @@ def mistni_ip():
         return "127.0.0.1"
 
 
-def prostredi(volby, data):
+def druh_behu(env=None):
+    """Jak aplikace běží, jen kód do statistik (NOKTURNO_BEH). APK si ho nastaví samo."""
+    env = os.environ if env is None else env
+    if env.get("SUPERVISOR_TOKEN"):
+        return "ha"
+    if sys.platform.startswith("linux") and env.get("INVOCATION_ID"):
+        return "systemd"
+    if os.path.exists("/.dockerenv"):
+        return "docker"
+    if zmrazeny():
+        return {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux")
+    return "python"
+
+
+def prostredi(volby, data, beh=None):
     env = dict(os.environ)
     env.update({
+        "NOKTURNO_BEH": beh or druh_behu(),
         "NOKTURNO_HOST": str(volby.get("host") or "0.0.0.0"),
         "NOKTURNO_SOUKROMA": "1" if volby.get("soukroma") else "0",
         "NOKTURNO_PUBLIC_URL": str(volby.get("public_url") or "").strip(),
@@ -316,7 +331,7 @@ def spust_v_procesu(data, volby=None):
     except Exception as err:  # noqa: BLE001
         LOG.warning("kontrola aktualizace: %s", err)
     cislo, slozka = verze.aktualni()
-    os.environ.update(prostredi(volby, data))
+    os.environ.update(prostredi(volby, data, beh="android"))
     LOG.info("spouštím doplněk %s", cislo)
     return sluzba(slozka)
 

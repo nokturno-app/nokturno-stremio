@@ -2904,3 +2904,27 @@ class TestZavadecSoukroma(unittest.TestCase):
             self.assertEqual(zavadec.main(["--data", data, "--povolit", "nesmysl"]), 2)
         with open(os.path.join(data, "cache", "povolena.txt"), encoding="utf-8") as f:
             self.assertEqual(f.read().strip(), config.fingerprint(NASTAVENI))
+
+
+class TestServerDoStatistik(unittest.TestCase):
+    """Od 9.0.6 hlášení nese server: stálé náhodné id a druh běhu, nic víc."""
+
+    def test_druh_behu(self):
+        sys.path.insert(0, str(ROOT / "baleni"))
+        import zavadec
+        self.assertEqual(zavadec.druh_behu({"SUPERVISOR_TOKEN": "x", "INVOCATION_ID": "y"}), "ha")
+        if sys.platform.startswith("linux"):
+            self.assertEqual(zavadec.druh_behu({"INVOCATION_ID": "y"}), "systemd")
+        self.assertEqual(zavadec.prostredi(dict(zavadec.VYCHOZI), "/tmp", beh="android")["NOKTURNO_BEH"], "android")
+        from nokturno.statistiky import druh_behu
+        self.assertEqual(druh_behu({"NOKTURNO_BEH": "windows"}), "windows")
+
+    def test_stale_id_a_jen_kody(self):
+        from nokturno.statistiky import Statistiky
+        with tempfile.TemporaryDirectory() as tmp:
+            a = Statistiky("9.9", data_dir=tmp).server()["server"]
+            b = Statistiky("9.9", data_dir=tmp).server()["server"]
+        self.assertEqual(a["id"], b["id"])
+        self.assertRegex(a["id"], r"^[0-9a-f]{32}$")
+        self.assertEqual(set(a), {"id", "run", "os", "arch", "private", "configs"})
+        self.assertEqual(Statistiky("9.9").server(), {})

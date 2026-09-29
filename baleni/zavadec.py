@@ -17,7 +17,8 @@ Spuštění:  nokturno [--host 0.0.0.0] [--port 7140] [--https-port 7141] [--bez
 
 `host` (v nokturno.json i --host) je adresa poslechu. Za reverzní proxy (VPS s doménou)
 127.0.0.1, ať port doplňku není vidět z internetu. `soukroma` zapne soukromou instanci:
-doplněk obslouží jen nastavení povolená v `<data>/cache/povolena.txt`.
+doplněk obslouží jen nastavení povolená v `<data>/cache/povolena.txt`. `public_url` (i --public-url)
+je veřejná adresa doplňku, kterou ukáže /configure – za proxy, kde adresa požadavku není ta veřejná.
 """
 import argparse
 import hashlib
@@ -42,7 +43,7 @@ VYCHOZI_UPDATE_URL = "https://raw.githubusercontent.com/nokturno-app/nokturno-st
 KONTROLA_S = 6 * 3600
 START_S = 60
 HA_VOLBY = "/data/options.json"
-VYCHOZI = {"host": "0.0.0.0", "soukroma": False, "port": 7140, "https_port": 7141, "enable_https": True, "tmdb_key": "",
+VYCHOZI = {"host": "0.0.0.0", "soukroma": False, "public_url": "", "port": 7140, "https_port": 7141, "enable_https": True, "tmdb_key": "",
            "stats": True, "crash_reports": True, "update_url": ""}
 
 
@@ -114,6 +115,7 @@ def prostredi(volby, data):
     env.update({
         "NOKTURNO_HOST": str(volby.get("host") or "0.0.0.0"),
         "NOKTURNO_SOUKROMA": "1" if volby.get("soukroma") else "0",
+        "NOKTURNO_PUBLIC_URL": str(volby.get("public_url") or "").strip(),
         "NOKTURNO_PORT": str(volby.get("port") or 7140),
         "NOKTURNO_DATA": os.path.join(data, "cache"),
         "NOKTURNO_HTTPS_PORT": str(volby.get("https_port") or 7141) if volby.get("enable_https", True) else "",
@@ -338,6 +340,7 @@ def main(argv=None):
         return sluzba(argv[1])
     ap = argparse.ArgumentParser(prog="nokturno", description="Nokturno pro Stremio a Nuvio")
     ap.add_argument("--host", help="adresa poslechu (za reverzní proxy 127.0.0.1)")
+    ap.add_argument("--public-url", help="veřejná adresa doplňku za proxy, např. https://nokturno.example.cz")
     ap.add_argument("--povolit", metavar="ADRESA", help="soukromá instance: povolit adresu doplňku (nebo otisk) a skončit")
     ap.add_argument("--port", type=int)
     ap.add_argument("--https-port", type=int)
@@ -352,6 +355,8 @@ def main(argv=None):
     volby = nacti_volby(data)
     if args.host:
         volby["host"] = args.host
+    if args.public_url:
+        volby["public_url"] = args.public_url
     if args.port:
         volby["port"] = args.port
     if args.https_port:

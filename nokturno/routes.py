@@ -62,7 +62,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "9.0.4"
+VERZE = "9.0.5"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián
@@ -377,6 +377,7 @@ class Router:
         self.enginy = enginy
         self.identita = identita or Identita("")
         self.https_port = 0   # vlastní instance v síti: port HTTPS (server.main)
+        self.public_url = ""  # veřejná adresa doplňku za proxy (NOKTURNO_PUBLIC_URL), přebije adresu z požadavku
         self.zprava = None   # volatelná → [(id, text, odkaz)] zpráv z dashboardu (nastaví server)
         self.zobrazeni = None   # volatelná (id, klíč uživatele) → započítá zobrazení zprávy
         self.klik = None     # volatelná (id) → započítá proklik zprávy (viz `/z/<id>`)
@@ -537,7 +538,7 @@ class Router:
         nabidka = self.katalogy.formular(jazyk) if self.katalogy else []
         html = html.replace("__KATALOGY__", mapping.json_do_scriptu(nabidka))
         # adresa doplňku: v síti HTTPS přes local-ip.co (Stremio jinak http z LAN nevezme)
-        doplnek = tls.https_zaklad(zaklad, self.https_port) or zaklad
+        doplnek = self.public_url or tls.https_zaklad(zaklad, self.https_port) or zaklad
         html = html.replace("__ZAKLAD_DOPLNKU__", html_lib.escape(doplnek, quote=True))
         html = html.replace("__ZAKLAD__", html_lib.escape(zaklad, quote=True))
         html = html.replace("__VERZE__", self.verze)

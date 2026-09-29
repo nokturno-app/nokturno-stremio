@@ -94,6 +94,9 @@ použít kdokoli. V `nokturno.json`:
 - Požadavek s hlavičkou `Cf-Connecting-IP` (přišel přes Cloudflare) smí jen na cesty doplňku, formulář,
   `/check`, `/cztor/*`, `/identita*`, `/z/`, `/terms` ani POST nedostane. Hlavní ochrana má být v proxy,
   tohle je druhá pojistka.
+- `public_url` (prostředí `NOKTURNO_PUBLIC_URL`, v příkazové řádce `--public-url`): veřejná adresa doplňku,
+  kterou ukáže `/configure` (např. `https://nokturno.example.cz`). Hodí se, když se formulář otevírá jinudy
+  než přes veřejnou adresu (Tailscale, domácí síť). Bez ní se adresa bere z požadavku.
 
 Jak nastavení povolit:
 

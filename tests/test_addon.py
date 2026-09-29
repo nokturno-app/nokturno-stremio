@@ -2856,6 +2856,24 @@ class TestSoukromaInstance(unittest.TestCase):
         self.assertEqual(self.r.route(f"/c/{KOUSEK}/manifest.json", ZAKLAD).status, 200)
 
 
+class TestVerejnaAdresa(unittest.TestCase):
+    def test_formular_ukaze_verejnou_adresu(self):
+        from nokturno import server
+        self.assertEqual(server.verejna_adresa(" https://kc9jri.nokturno.stream/ "), "https://kc9jri.nokturno.stream")
+        for zle in ("", "kc9jri.nokturno.stream", "ftp://a.cz", "https://a.cz/?x=1"):
+            self.assertEqual(server.verejna_adresa(zle), "", zle)
+        r = router()
+        self.assertIn(ZAKLAD, r.route("/configure", ZAKLAD).html)
+        r.public_url = "https://kc9jri.nokturno.stream"
+        self.assertIn('"https://kc9jri.nokturno.stream"', r.route("/configure", ZAKLAD).html)
+
+    def test_zavadec_predava_volbu(self):
+        sys.path.insert(0, str(ROOT / "baleni"))
+        import zavadec
+        self.assertEqual(zavadec.prostredi(dict(zavadec.VYCHOZI), "/tmp")["NOKTURNO_PUBLIC_URL"], "")
+        self.assertEqual(zavadec.prostredi({**zavadec.VYCHOZI, "public_url": "https://a.cz"}, "/tmp")["NOKTURNO_PUBLIC_URL"],
+                         "https://a.cz")
+
 class TestPrepinacStatistik(unittest.TestCase):
     def test_uklada_do_slozky_a_prepne_hned(self):
         from nokturno import soukroma

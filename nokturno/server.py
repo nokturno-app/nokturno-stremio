@@ -15,6 +15,7 @@ import shutil
 import sys
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .config import decode, fingerprint, from_environ, sources_summary
@@ -454,6 +455,9 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
     if os.environ.get("NOKTURNO_SOUKROMA", "").strip().lower() in ("1", "true", "ano", "yes"):
         server.router.povolena = soukroma.Povolena(data_dir)
         _LOGGER.info("soukromá instance: povolená nastavení v %s", server.router.povolena.cesta)
+    server.router.public_url = verejna_adresa(os.environ.get("NOKTURNO_PUBLIC_URL", ""))
+    if server.router.public_url:
+        _LOGGER.info("veřejná adresa doplňku: %s", server.router.public_url)
     server.pady.odesli()   # co zůstalo ve frontě z minula (server nebo síť tehdy neběžely)
     server.provoz = provoz
     server.router.zprava = server.provoz.zprava
@@ -483,6 +487,15 @@ def spust_https(server, host, port, slozka):
     threading.Thread(target=https.serve_forever, daemon=True).start()
     _LOGGER.info("HTTPS pro Stremio v síti: https://<ip-s-pomlckami>.%s:%d", tls.DOMENA, port)
     return https
+
+
+def verejna_adresa(text):
+    """`https://nokturno.example.cz/` → `https://nokturno.example.cz`; nesmysl → "" (adresa z požadavku)."""
+    text = (text or "").strip().rstrip("/")
+    cast = urllib.parse.urlsplit(text)
+    if cast.scheme not in ("http", "https") or not cast.hostname or cast.query or cast.fragment:
+        return ""
+    return text
 
 
 def main(argv=None):

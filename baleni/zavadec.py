@@ -12,7 +12,10 @@ stáhne zip, ověří otisk, rozbalí ho vedle a doplněk restartuje. Když nov�
 
 Zip má na nejvyšší úrovni složku `nokturno/`. Vyrábí ho `baleni/balik.sh`.
 
-Spuštění:  nokturno [--port 7140] [--https-port 7141] [--bez-https] [--data SLOŽKA]
+Spuštění:  nokturno [--host 0.0.0.0] [--port 7140] [--https-port 7141] [--bez-https] [--data SLOŽKA]
+
+`host` (v nokturno.json i --host) je adresa poslechu. Za reverzní proxy (VPS s doménou)
+127.0.0.1, ať port doplňku není vidět z internetu.
 """
 import argparse
 import hashlib
@@ -37,7 +40,7 @@ VYCHOZI_UPDATE_URL = "https://raw.githubusercontent.com/nokturno-app/nokturno-st
 KONTROLA_S = 6 * 3600
 START_S = 60
 HA_VOLBY = "/data/options.json"
-VYCHOZI = {"port": 7140, "https_port": 7141, "enable_https": True, "tmdb_key": "",
+VYCHOZI = {"host": "0.0.0.0", "port": 7140, "https_port": 7141, "enable_https": True, "tmdb_key": "",
            "stats": True, "crash_reports": True, "update_url": ""}
 
 
@@ -107,7 +110,7 @@ def mistni_ip():
 def prostredi(volby, data):
     env = dict(os.environ)
     env.update({
-        "NOKTURNO_HOST": "0.0.0.0",
+        "NOKTURNO_HOST": str(volby.get("host") or "0.0.0.0"),
         "NOKTURNO_PORT": str(volby.get("port") or 7140),
         "NOKTURNO_DATA": os.path.join(data, "cache"),
         "NOKTURNO_HTTPS_PORT": str(volby.get("https_port") or 7141) if volby.get("enable_https", True) else "",
@@ -316,6 +319,7 @@ def main(argv=None):
     if argv[:1] == ["--sluzba"]:
         return sluzba(argv[1])
     ap = argparse.ArgumentParser(prog="nokturno", description="Nokturno pro Stremio a Nuvio")
+    ap.add_argument("--host", help="adresa poslechu (za reverzní proxy 127.0.0.1)")
     ap.add_argument("--port", type=int)
     ap.add_argument("--https-port", type=int)
     ap.add_argument("--bez-https", action="store_true")
@@ -325,6 +329,8 @@ def main(argv=None):
     data = args.data or datova_slozka()
     os.makedirs(data, exist_ok=True)
     volby = nacti_volby(data)
+    if args.host:
+        volby["host"] = args.host
     if args.port:
         volby["port"] = args.port
     if args.https_port:

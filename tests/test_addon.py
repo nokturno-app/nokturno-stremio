@@ -2775,3 +2775,22 @@ class TestHttpsVSiti(unittest.TestCase):
         self.assertIsNone(tls.https_zaklad("http://127.0.0.1:7140", 7141))
         self.assertIsNone(tls.https_zaklad("https://nokturno.stream", 7141))
         self.assertIsNone(tls.https_zaklad("http://192.168.1.10:7140", 0))
+
+
+class TestZavadecAdresaPoslechu(unittest.TestCase):
+    """VPS za reverzní proxy: `host` z nokturno.json jde do NOKTURNO_HOST (install.sh --domain)."""
+
+    def test_host_z_voleb(self):
+        sys.path.insert(0, str(ROOT / "baleni"))
+        import zavadec
+        self.assertEqual(zavadec.prostredi(dict(zavadec.VYCHOZI), "/tmp")["NOKTURNO_HOST"], "0.0.0.0")
+        env = zavadec.prostredi({**zavadec.VYCHOZI, "host": "127.0.0.1", "enable_https": False}, "/tmp")
+        self.assertEqual((env["NOKTURNO_HOST"], env["NOKTURNO_HTTPS_PORT"]), ("127.0.0.1", ""))
+
+    def test_adresa_doplnku_za_proxy(self):
+        """Caddy posílá Host původního požadavku a X-Forwarded-Proto https."""
+        from nokturno.server import Handler
+        h = Handler.__new__(Handler)
+        h.headers = {"Host": "nokturno.example.cz", "X-Forwarded-Proto": "https"}
+        h.server = mock.Mock(schema="http", server_address=("127.0.0.1", 7140))
+        self.assertEqual(h._zaklad(), "https://nokturno.example.cz")

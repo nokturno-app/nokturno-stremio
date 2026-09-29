@@ -8,12 +8,14 @@ Jako volitelnou doplňkovou službu si zapneš i vyhledávače třetích stran
 
 ## Instalace (od 9.0.0 jen u tebe)
 
-Veřejný server skončil 30. 9. 2026. Nokturno pro Stremio je od 9.0.0 **aplikace, která běží
-na tvém počítači, NASu nebo Android TV boxu**. Stáhni ji z
-[vydání](https://github.com/nokturno-app/nokturno-stremio-app/releases) (Windows, macOS, Linux
-amd64/arm64/arm/386, APK), spusť a otevři `http://<adresa toho stroje>:7140/configure`.
+Veřejná instance na `nokturno.stream` končí 30. 9. 2026 (od 29. 9. už nevydává nová nastavení,
+`/configure` vrací 410). Nokturno pro Stremio je od 9.0.0 **jen aplikace, která běží na počítači,
+NASu nebo Android TV boxu uživatele**. Stáhne se z
+[vydání](https://github.com/nokturno-app/nokturno-stremio-app/releases) (Windows, macOS Intel a ARM,
+Linux amd64/arm64/arm/386, APK), po spuštění se otevře `http://<adresa toho stroje>:7140/configure`.
 Aplikace se sama aktualizuje (`update.json` ve stejném repu, balík ověřuje SHA-256 a verzi,
-která nenaběhne, vrátí).
+která nenaběhne, vrátí). Uživatelský návod: README repa `nokturno-stremio-app` a článek nápovědy
+[Nokturno pro Stremio – aplikace](https://nokturno-app.github.io/nokturno-napoveda/cs/stremio-aplikace).
 
 Stremio na témže stroji bere adresu `http://127.0.0.1:7140/…`. Z jiného zařízení v síti
 potřebuje HTTPS: aplikace k tomu otevře port 7141 s adresou `https://192-168-1-10.my.local-ip.co:7141`
@@ -21,7 +23,7 @@ potřebuje HTTPS: aplikace k tomu otevře port 7141 s adresou `https://192-168-1
 
 ## Rodina Nokturno
 
-Nokturno má tři klienty, všechny stojí na společném jádru [nokturno-core](https://github.com/nokturno-app/nokturno-core):
+Nokturno má tři klienty, všechny stojí na společném jádru (soukromé repo `nokturno-app/nokturno-jadro`, `nokturno/core/` je jeho kopie):
 
 | Klient | Co dělá | Navíc oproti Stremiu |
 |---|---|---|
@@ -41,7 +43,7 @@ Kdo chce víc – stahování, titulky z OpenSubtitles, Trakt, TV program – po
 - **Sedm volitelných vyhledávačů třetích stran** – WebShare, Sosáč, HellSpy, Sledujteto, FastShare / Sdilej.cz, Přehraj.to a CZtor; žádný není povinný. FastShare jde i s účtem ze Sdilej.cz ([nápověda](https://nokturno-app.github.io/nokturno-napoveda/cs/sdilej-cz)). Přehraj.to (od 7.0.4) chce ve formuláři vlastní účet jako WebShare nebo Sledujteto: bez přihlášení API nevydá token a HTML z jedné serverové adresy dostane HTTP 429.
 - **Volitelné katalogy** (od 5.1.0) – seznamy ze Sosáče a TMDB, žebříček „Nejsledovanější tento týden“; každý se zapíná zvlášť ve formuláři. Katalogy z dashboardu (sezónní a tematické, třeba Vánoce nebo Film pro dnešní den) jsou v doplňku vždy a první (od 8.4.0).
 - **Přímé přehrávání** (od 5.2.26) – vlastní úložiště a FastShare se přehrávají přímo ze zdroje (`behaviorHints.proxyHeaders` nese přihlášení), žádná proxy. Úložiště proto musí být dosažitelné ze serveru (hledání) i ze zařízení, kde se přehrává. ⚠️ Ve webovém přehrávači Stremia se tyto streamy nepřehrají, jen v aplikaci. 
-- **Zprávy z dashboardu** – položka „📢 Nokturno" jako první stream; **jazyky** čeština, slovenština, angličtina i maďarština. Formulář je česky a slovensky, nastavení ze slovenského formuláře má slovensky i hlášky doplňku.
+- **Zprávy z dashboardu** – položka „📢 Nokturno" jako první stream, jen na instanci s `NOKTURNO_TRAFFIC_TOKEN` (v aplikaci vypnuté, zavaděč nastavuje `NOKTURNO_TRAFFIC=0`); **jazyky** čeština, slovenština, angličtina i maďarština. Formulář je česky a slovensky, nastavení ze slovenského formuláře má slovensky i hlášky doplňku.
 
 | | |
 |---|---|
@@ -49,7 +51,7 @@ Kdo chce víc – stahování, titulky z OpenSubtitles, Trakt, TV program – po
 | Seriály | ano, včetně jednotlivých dílů |
 | Titulky | ano, z WebShare a Sledujteto |
 | Zvuk | jazyk, kanály a kodek – z hlavičky souboru, u Sledujteto přímo z API; u FastShare jen s neomezeným stahováním (na kredit by čtení hlaviček ubíralo kredit) |
-| Katalogy | volitelně (od 5.1.0): Sosáč – nejpopulárnější filmy a seriály, nově přidané; TMDB – trendy, populární, nejlépe hodnocené (jen s klíčem instance `NOKTURNO_TMDB_KEY`). Jedna cache pro všechny, obnova po 6 h. Katalogy z dashboardu (sezónní a tematické) bez přepínače, vždy první |
+| Katalogy | volitelně (od 5.1.0): Sosáč – nejpopulárnější filmy a seriály, nově přidané; TMDB – trendy, populární, nejlépe hodnocené (jen s klíčem `NOKTURNO_TMDB_KEY`, v aplikaci volba `tmdb_key` v `nokturno.json`). Jedna cache pro všechny, obnova po 6 h. Katalogy z dashboardu (sezónní a tematické) bez přepínače, vždy první |
 | Popisy titulů | ne – detail k položkám katalogů i k ostatním titulům dodává Cinemeta |
 
 Streamy se řadí podle kvality a preferovaného jazyka, protože ve Stremiu je vidět
@@ -62,7 +64,8 @@ Doplněk posílá anonymní statistiky na stejný sběrný bod jako Nokturno pro
 a Home Assistant: náhodný identifikátor nastavení, verzi, které zdroje jsou
 zapnuté a u kterých titulů se otevřely streamy – nejvýš jednou za 6 hodin.
 Jedna „instalace" je jedno nastavení doplňku (vlastní adresa), ne celý server.
-Účty ani adresa doplňku se neposílají. Vypnutí: `NOKTURNO_STATS=0`. I po vypnutí se nejvýš jednou za 6 hodin pošle jen náhodný identifikátor a verze, aby bylo vidět, že nastavení žije – žádné tituly ani zdroje.
+Účty ani adresa doplňku se neposílají. Vypnutí: `NOKTURNO_STATS=0` (v aplikaci volba `"stats": false`
+v `nokturno.json`, zavaděč proměnnou prostředí přepíše podle ní; v APK soubor uživatel upravit nemůže). I po vypnutí se nejvýš jednou za 6 hodin pošle jen náhodný identifikátor a verze, aby bylo vidět, že nastavení žije – žádné tituly ani zdroje.
 
 ## Hlášení o pádech
 
@@ -70,7 +73,7 @@ Když při obsluze požadavku nastane neošetřená chyba v kódu (ne výpadek z
 služba pošle na stejný server krátké hlášení: typ chyby, místo v kódu, verzi
 a posledních pár řádků vlastního logu. Adresy, účty, IP a nastavení z adresy
 doplňku se předem vymažou. Stejná chyba odejde nejvýš jednou za verzi. Id je
-náhodné, jedno na server (`<data>/pady/id`). Vypnutí: `NOKTURNO_CRASH_REPORTS=0`.
+náhodné, jedno na server (`<data>/pady/id`). Vypnutí: `NOKTURNO_CRASH_REPORTS=0` (v aplikaci `"crash_reports": false`).
 
 ## Vlastní instance (pro vývojáře a pokročilé)
 
@@ -170,7 +173,7 @@ ostatní dotazy. Nasazení je tím jen zkopírování zdrojáků, bez `pip insta
 se při příštím rozeslání přepíše. Patří do jádra:
 
 ```bash
-cd ../../nokturno-core
+cd ../nokturno-jadro
 python3 tools/sync_core.py --check --diff stremio
 python3 tools/sync_core.py stremio
 ```
@@ -182,6 +185,24 @@ python3 -m unittest discover -s tests -v
 ```
 
 Nesahají na síť a nepotřebují účty. Jádro má vlastní testy ve svém repu.
+
+## Vydání
+
+Vydává jen CI, nikdy účet člověka:
+
+1. Číslo verze v `VERZE` (`nokturno/routes.py`) podle pravidel rodiny, commit do `main`.
+2. Anotovaný tag `v<verze>` a push. Workflow `.github/workflows/baleni.yml` postaví 7 programů (PyInstaller:
+   Linux amd64/arm64/arm/386 v Debianu přes QEMU, Windows, macOS Intel a ARM) a APK (Chaquopy, Gradle).
+3. Job `vydani` zkontroluje, že tag sedí s `VERZE`, vyrobí balík pro zavaděč (`baleni/balik.sh`: zip se složkou
+   `nokturno/` a `update.json` s SHA-256) a ve veřejném repu `nokturno-app/nokturno-stremio-app` založí release
+   „Nokturno pro Stremio <verze> – opravy chyb“. Stabilní verze pak přepíše `update.json` v `main` toho repa,
+   beta (`9.1.0b1`) jde jen jako pre-release a `update.json` nemění.
+4. Do veřejného repa zapisuje **GitHub App `nokturno-release`** organizace (instalovaná jen na
+   `nokturno-stremio-app`, Contents: read and write). V tomhle repu je k tomu proměnná `NOKTURNO_APP_ID`
+   a tajemství `NOKTURNO_APP_KEY` (privátní klíč aplikace), volitelně `NOKTURNO_KEYSTORE_B64`
+   a `NOKTURNO_KEYSTORE_HESLO` pro podpis APK (bez nich ladicí klíč).
+
+Ruční spuštění workflow (`workflow_dispatch`) vyrobí jen artefakty běhu, nic nevydá.
 
 ## Pomoc
 

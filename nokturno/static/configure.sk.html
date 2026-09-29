@@ -648,19 +648,8 @@
 
   <!-- ============================== APLIKACE ============================== -->
   <section id="aplikace" hidden>
-    <h2><b>⚙</b>Aplikácia na tomto zariadení</h2>
-    <p class="popis">Voľby samotnej aplikácie Nokturno, nie adresy doplnku. Platia hneď a pre všetkých, kto túto aplikáciu používajú.</p>
-    <label class="prepinac">
-      <input type="checkbox" id="app-stats">
-      <span><strong>Posielať anonymné štatistiky</strong><small>Verzia, zapnuté zdroje a tituly, pri ktorých sa otvorili streamy. Bez účtov, hesiel a adresy doplnku.</small></span>
-    </label>
-    <label class="prepinac">
-      <input type="checkbox" id="app-pady">
-      <span><strong>Posielať hlásenia o pádoch</strong><small>Pri chybe v doplnku odíde technický záznam bez účtov a hesiel, aby sme ju mohli opraviť.</small></span>
-    </label>
-    <div class="stav" id="app-stav"></div>
-    <div id="app-aktualizace" hidden>
-      <h3>Aktualizácia</h3>
+    <h2><b>↻</b>Aktualizácia</h2>
+    <div id="app-aktualizace">
       <p class="popis">Aplikácia kontroluje aktualizácie sama pri štarte a potom každých 6 hodín. Reštart aplikácie spustí kontrolu tiež.</p>
       <button type="button" class="male" id="app-zkontrolovat">Skontrolovať aktualizácie</button>
       <div class="stav" id="app-verze"></div>
@@ -718,7 +707,9 @@
       <div class="obsah">
         <p>Áno, anonymné – rovnako ako Nokturno pre Kodi a Home Assistant. Najviac raz za 6 hodín sa odošle náhodný
           identifikátor tvojho nastavenia, verzia doplnku, ktoré zdroje máš zapnuté a pri ktorých tituloch sa otvorili streamy.
-          Žiadne účty, heslá ani adresa doplnku sa neposielajú. Slúži len na to, aby sme vedeli, čo sa používa.</p>
+          Žiadne účty, heslá ani adresa doplnku sa neposielajú. Slúži len na to, aby sme vedeli, čo sa používa. Aplikácia k tomu pridá náhodný identifikátor servera, ako beží
+          (počítač, Android, Home Assistant, VPS), systém a počet nastavení. Vypnúť sa dá v <code>nokturno.json</code>
+          voľbami <code>"stats": false</code> a <code>"crash_reports": false</code>.</p>
       </div>
     </details>
 
@@ -1329,18 +1320,8 @@ $("kopirovat").addEventListener("click", async () => {
 const APLIKACE = __APLIKACE__;
 const posliServeru = (cesta, telo) => fetch(ZAKLAD + cesta, {method: "POST", headers: {"X-Nokturno": "1"}, body: telo})
   .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
-if (APLIKACE.sprava) {
-  $("aplikace").hidden = false;
-  $("app-stats").checked = APLIKACE.stats;
-  $("app-pady").checked = APLIKACE.crash_reports;
-  for (const [id, klic] of [["app-stats", "stats"], ["app-pady", "crash_reports"]]) {
-    $(id).addEventListener("change", () => posliServeru("/aplikace", JSON.stringify({[klic]: $(id).checked}))
-      .then(() => { $("app-stav").textContent = "Uložené."; })
-      .catch(() => { $("app-stav").textContent = "Voľbu sa nepodarilo uložiť."; }));
-  }
-}
 if (APLIKACE.sprava && APLIKACE.aktualizace) {
-  $("app-aktualizace").hidden = false;
+  $("aplikace").hidden = false;
   const verze = $("app-verze");
   const nacti = (znovu) => fetch(ZAKLAD + "/aktualizace" + (znovu ? "?znovu=1" : "")).then((r) => r.json());
   const ukaz = (d) => {

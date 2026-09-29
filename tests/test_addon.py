@@ -6,6 +6,7 @@ Jádro má vlastní testy v repu `nokturno-core`. Tady se ověřuje jen to, co j
 vlastní doplňku: převod streamů do podoby pro Stremio, rozcestník a odmítání
 odkazů, které by se neměly přehrát.
 """
+import io
 import json
 import logging
 import os
@@ -2874,6 +2875,28 @@ class TestVerejnaAdresa(unittest.TestCase):
         self.assertEqual(zavadec.prostredi({**zavadec.VYCHOZI, "public_url": "https://a.cz"}, "/tmp")["NOKTURNO_PUBLIC_URL"],
                          "https://a.cz")
 
+class TestAktualizaceZFormulare(unittest.TestCase):
+    def test_znacka_pro_zavadec(self):
+        tmp = tempfile.mkdtemp()
+        r = router()
+        r.enginy_test.data_dir = tmp
+        self.assertEqual(r.route("/aktualizace", ZAKLAD).status, 404)   # bez zavaděče nic
+        r.UPDATE_URL = "https://x.cz/update.json"
+        with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(b'{"version": "9.0.10"}')):
+            self.assertEqual(r.route("/aktualizace", ZAKLAD).data,
+                             {"verze": r.verze, "nejnovejsi": "9.0.10", "novejsi": True})
+        self.assertEqual(r.route("/aktualizace", ZAKLAD, z_proxy=True).status, 404)
+        self.assertEqual(r.post("/aktualizace", "", {}).status, 403)
+        self.assertEqual(r.post("/aktualizace", "", {"X-Nokturno": "1"}).status, 200)
+        sys.path.insert(0, str(ROOT / "baleni"))
+        import zavadec
+        self.assertEqual(zavadec.znacka_aktualizace("/d"), "/d/cache/aktualizovat")
+        self.assertTrue(os.path.exists(os.path.join(tmp, zavadec.ZNACKA_AKTUALIZACE)))
+        self.assertEqual(zavadec.prostredi(dict(zavadec.VYCHOZI), "/tmp", beh="android")["NOKTURNO_UPDATE_URL"], "")
+        self.assertEqual(zavadec.prostredi(dict(zavadec.VYCHOZI), "/tmp", beh="linux")["NOKTURNO_UPDATE_URL"],
+                         zavadec.VYCHOZI_UPDATE_URL)
+
+
 class TestPrepinacStatistik(unittest.TestCase):
     def test_uklada_do_slozky_a_prepne_hned(self):
         from nokturno import soukroma
@@ -2883,7 +2906,7 @@ class TestPrepinacStatistik(unittest.TestCase):
         r.statistiky = mock.Mock(zapnuto=True)
         r.pady = mock.Mock(zapnuto=True)
         odp = r.post("/aplikace", json.dumps({"stats": False}), {"X-Nokturno": "1"})
-        self.assertEqual(odp.data, {"soukroma": False, "stats": False, "crash_reports": True})
+        self.assertEqual(odp.data, {"soukroma": False, "aktualizace": False, "stats": False, "crash_reports": True})
         self.assertFalse(r.statistiky.zapnuto)
         self.assertEqual(soukroma.nacti_aplikaci(tmp), {"stats": False})
         self.assertEqual(r.post("/aplikace", "{}", {"X-Nokturno": "1", "Cf-Connecting-IP": "1.1.1.1"}).status, 403)

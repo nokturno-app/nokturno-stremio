@@ -11,6 +11,7 @@
     GET /health                          pro kontejner
     POST /povolit                        soukromá instance: připíše otisk nastavení (viz soukroma.py)
     POST /aplikace                       statistiky a hlášení o pádech z formuláře
+    GET|POST /aktualizace                verze a kontrola aktualizace hned (jen pod zavaděčem)
 
 Stremio nemá soubor nastavení — účty se nosí zakódované v cestě adresy, takže
 každý, kdo si doplněk přidá, má vlastní. Server si nic nepamatuje a hledá vždy
@@ -43,6 +44,12 @@ import re
 import threading
 import time
 import urllib.parse
+import urllib.request
+
+
+def verze_tuple(v):
+    """„9.0.10“ → (9, 0, 10); nečíselné části jako 0."""
+    return tuple(int(c) if c.isdigit() else 0 for c in str(v).split("."))
 
 from .core.engine import NokturnoError, is_sosac_id, split_episode_id
 from .core.lib.webshare_api import WebshareApi, WebshareError
@@ -62,7 +69,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "9.0.6"
+VERZE = "9.0.7"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián
@@ -430,8 +437,28 @@ class Router:
             return None
         return Odpoved(status=403, text="", utok=("soukromá instance", None))
 
+    ZNACKA_AKTUALIZACE = "aktualizovat"   # zavadec.ZNACKA_AKTUALIZACE
+    UPDATE_URL = os.environ.get("NOKTURNO_UPDATE_URL", "").strip()   # jen pod zavaděčem
+
+    def aktualizace(self, znovu=False):
+        """Nainstalovaná a nejnovější vydaná verze (update.json, v paměti 10 min)."""
+        ted = time.time()
+        uloz = getattr(self, "_nejnovejsi", None)
+        if znovu or not uloz or ted - uloz[0] > 600:
+            try:
+                req = urllib.request.Request(self.UPDATE_URL, headers={"User-Agent": "Nokturno"})
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    uloz = (ted, str(json.load(r)["version"]))
+            except (OSError, ValueError, KeyError) as err:
+                _LOGGER.info("kontrola verze: %s", err)
+                uloz = (ted, "")
+            self._nejnovejsi = uloz
+        nejnovejsi = uloz[1]
+        return {"verze": self.verze, "nejnovejsi": nejnovejsi,
+                "novejsi": bool(nejnovejsi) and verze_tuple(nejnovejsi) > verze_tuple(self.verze)}
+
     def aplikace(self):
-        return {"soukroma": self.povolena is not None,
+        return {"soukroma": self.povolena is not None, "aktualizace": bool(self.UPDATE_URL),
                 "stats": bool(self.statistiky and self.statistiky.zapnuto),
                 "crash_reports": bool(self.pady and self.pady.zapnuto)}
 
@@ -457,6 +484,12 @@ class Router:
             self.povolena.pridej(otisk)
             _LOGGER.info("povolené nastavení %s", otisk)
             return Odpoved(data={"ok": True, "otisk": otisk})
+        if cesta == "/aktualizace":
+            if not self.UPDATE_URL:
+                return chyba(404, "Aktualizace řídí zavaděč, tady neběží.")
+            with open(os.path.join(self.enginy.data_dir, self.ZNACKA_AKTUALIZACE), "w", encoding="utf-8"):
+                pass
+            return Odpoved(data={"ok": True})
         if cesta == "/aplikace":
             try:
                 data = json.loads(telo or "{}")
@@ -869,6 +902,10 @@ class Router:
                 return odp
         if cesta == "/health":
             return self.health()
+        if cesta == "/aktualizace":
+            if z_proxy or not self.UPDATE_URL:
+                return chyba(404, "Nic tu není.")
+            return Odpoved(data=self.aktualizace("znovu=1" in dotaz))
         if cesta == "/terms":
             return self.terms(zaklad, jazyk)
         if cesta.startswith("/z/"):

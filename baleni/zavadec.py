@@ -21,6 +21,7 @@ doplněk obslouží jen nastavení povolená v `<data>/cache/povolena.txt`. `pub
 je veřejná adresa doplňku, kterou ukáže /configure – za proxy, kde adresa požadavku není ta veřejná.
 """
 import argparse
+import contextlib
 import hashlib
 import io
 import json
@@ -42,6 +43,7 @@ LOG = logging.getLogger("zavadec")
 VYCHOZI_UPDATE_URL = "https://raw.githubusercontent.com/nokturno-app/nokturno-stremio-app/main/update.json"
 KONTROLA_S = 6 * 3600
 START_S = 60
+ZNACKA_AKTUALIZACE = "aktualizovat"   # stejné jméno v nokturno/routes.py
 HA_VOLBY = "/data/options.json"
 VYCHOZI = {"host": "0.0.0.0", "soukroma": False, "public_url": "", "port": 7140, "https_port": 7141, "enable_https": True, "tmdb_key": "",
            "stats": True, "crash_reports": True, "update_url": ""}
@@ -140,7 +142,15 @@ def prostredi(volby, data, beh=None):
         "NOKTURNO_TRAFFIC": "0",
         "PYTHONUNBUFFERED": "1",
     })
+    # Tlačítko aktualizace na /configure jen tam, kde běží smyčka zavaděče (APK ji nemá).
+    env["NOKTURNO_UPDATE_URL"] = "" if env["NOKTURNO_BEH"] == "android" else \
+        (str(volby.get("update_url") or "").strip() or VYCHOZI_UPDATE_URL)
     return env
+
+
+def znacka_aktualizace(data):
+    """Soubor, kterým formulář (POST /aktualizace) požádá zavaděč o kontrolu hned."""
+    return os.path.join(data, "cache", ZNACKA_AKTUALIZACE)
 
 
 class Verze:
@@ -305,6 +315,12 @@ class Zavadec:
             if self.proces is not None and self.proces.poll() is not None:
                 LOG.warning("doplněk skončil (%s), spouštím znovu", self.proces.returncode)
                 self.restart()
+            znacka = znacka_aktualizace(self.data)
+            if os.path.exists(znacka):
+                LOG.info("kontrola aktualizace z formuláře")
+                with contextlib.suppress(OSError):
+                    os.remove(znacka)
+                dalsi = 0
             if time.monotonic() >= dalsi:
                 dalsi = time.monotonic() + KONTROLA_S
                 try:

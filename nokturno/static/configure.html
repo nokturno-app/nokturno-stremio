@@ -659,6 +659,12 @@
       <span><strong>Posílat hlášení o pádech</strong><small>Při chybě v doplňku odejde technický záznam bez účtů a hesel, ať ji můžeme opravit.</small></span>
     </label>
     <div class="stav" id="app-stav"></div>
+    <div id="app-aktualizace" hidden>
+      <h3>Aktualizace</h3>
+      <p class="popis">Aplikace kontroluje aktualizace sama při startu a pak každých 6 hodin. Restart aplikace spustí kontrolu taky.</p>
+      <button type="button" class="male" id="app-zkontrolovat">Zkontrolovat aktualizace</button>
+      <div class="stav" id="app-verze"></div>
+    </div>
   </section>
 
   <!-- ============================== FAQ ============================== -->
@@ -1292,11 +1298,26 @@ $("nuvio").addEventListener("click", () => {
   window.location.href = adresa().replace(/^https?:\/\//, "nuvio://");
 });
 
+// Přes HTTP (vlastní instance v síti) prohlížeč Clipboard API nedá – záloha přes execCommand.
+async function zkopiruj(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  const pole = document.createElement("textarea");
+  pole.value = text;
+  pole.setAttribute("readonly", "");
+  pole.style.position = "fixed";
+  pole.style.opacity = "0";
+  document.body.appendChild(pole);
+  pole.select();
+  const ok = document.execCommand("copy");
+  pole.remove();
+  if (!ok) throw new Error("copy");
+}
+
 $("kopirovat").addEventListener("click", async () => {
   const chyba = problem();
   if (chyba) { nastavStav(chyba, true); return; }
   try {
-    await navigator.clipboard.writeText(adresa());
+    await zkopiruj(adresa());
     nastavStav("Adresa zkopírována. Vlož ji v aplikaci mezi doplňky (Stremio: Doplňky → pole nahoře → Instalovat).");
   } catch {
     document.querySelector("details.adresa").open = true;
@@ -1317,6 +1338,36 @@ if (APLIKACE.sprava) {
       .then(() => { $("app-stav").textContent = "Uloženo."; })
       .catch(() => { $("app-stav").textContent = "Volbu se nepodařilo uložit."; }));
   }
+}
+if (APLIKACE.sprava && APLIKACE.aktualizace) {
+  $("app-aktualizace").hidden = false;
+  const verze = $("app-verze");
+  const nacti = (znovu) => fetch(ZAKLAD + "/aktualizace" + (znovu ? "?znovu=1" : "")).then((r) => r.json());
+  const ukaz = (d) => {
+    verze.textContent = d.nejnovejsi ? "Nainstalovaná verze {v}, nejnovější {n}.".replace("{v}", d.verze).replace("{n}", d.nejnovejsi)
+      + " " + (d.novejsi ? "Je k dispozici novější verze." : "Máš nejnovější verzi.") : "Nainstalovaná verze {v}. Nejnovější verzi se teď nepodařilo zjistit.".replace("{v}", d.verze);
+    return d;
+  };
+  nacti(false).then(ukaz).catch(() => {});
+  $("app-zkontrolovat").addEventListener("click", async () => {
+    verze.textContent = "Zjišťuji verzi…";
+    try {
+      const d = ukaz(await nacti(true));
+      if (!d.novejsi) return;
+      await posliServeru("/aktualizace", "");
+      verze.textContent = "Stahuji a restartuji aplikaci, stránka se sama obnoví…";
+      for (let i = 0; i < 60; i++) {
+        await new Promise((z) => setTimeout(z, 3000));
+        try {
+          const h = await fetch(ZAKLAD + "/health").then((r) => r.json());
+          if (h.verze && h.verze !== d.verze) { verze.textContent = "Aplikace je aktualizovaná."; location.reload(); return; }
+        } catch {}
+      }
+      verze.textContent = "Aktualizace trvá déle – obnov stránku za chvíli.";
+    } catch {
+      verze.textContent = "Aktualizaci se nepodařilo spustit.";
+    }
+  });
 }
 if (APLIKACE.sprava && APLIKACE.soukroma) {
   $("povolit").hidden = false;

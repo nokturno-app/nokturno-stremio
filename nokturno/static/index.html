@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<script>try{var t=localStorage.getItem("nokturno-tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nokturno – přehrávač vlastního úložiště pro Kodi, Home Assistant a Stremio</title>
+<meta name="description" content="Nokturno – přehrávač tvého vlastního úložiště (WebDAV, NAS, přímé odkazy) pro Kodi, Home Assistant a Stremio.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="https://raw.githubusercontent.com/nokturno-app/plugin.video.nokturno/main/resources/media/icon2.png">
+<style>
+  :root {
+    --pozadi: #0d0c1d; --panel: #17162b; --panel-2: #1c1b33; --pole: #201f38; --okraj: #2f2d4d;
+    --text: #e8e6f5; --tlumene: #9a97b8; --akcent: #7b5bf5; --akcent-tmavy: #6547d6; --ok: #3ecf8e;
+  }
+  /* barvy mimo základní paletu; světlá verze níž, přepínač ☀/☾ ukládá volbu do localStorage */
+  :root { color-scheme: dark; --odkaz: #a993ff; --odkaz-hover: #c7b8ff; --akcent-svetly: #cbbcff;
+          --doporuceno-pozadi: #221c45; --ok-okraj: #22563f; --pozor-text: #ffd694; --pozor-okraj: #5a4318;
+          --stin: rgba(0,0,0,.5); --cara: rgba(255,255,255,.08); }
+  :root[data-theme="light"] { --pozadi: #f6f5fb; --panel: #ffffff; --panel-2: #f1effa; --pole: #f3f1fa; --okraj: #e2def0;
+    --text: #1c1a33; --tlumene: #5f5b7a; --akcent: #6d4ef0; --akcent-tmavy: #5a3dd8;
+    --ok: #13925f; --ok-pozadi: #e6f6ee; --vystraha: #b7791f; --vystraha-pozadi: #fdf4e3;
+    --chyba: #d63939; --chyba-pozadi: #fdecec;
+    --odkaz: #5b3fd9; --odkaz-hover: #3f27b0; --akcent-svetly: #5b3fd9; --doporuceno-pozadi: #ece7ff;
+    --ok-okraj: #a6dfc3; --pozor-text: #8a5a0f; --pozor-okraj: #f0d49a;
+    --stin: rgba(30,20,80,.12); --cara: rgba(0,0,0,.08); color-scheme: light; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --pozadi: #f6f5fb; --panel: #ffffff; --panel-2: #f1effa; --pole: #f3f1fa; --okraj: #e2def0;
+    --text: #1c1a33; --tlumene: #5f5b7a; --akcent: #6d4ef0; --akcent-tmavy: #5a3dd8;
+    --ok: #13925f; --ok-pozadi: #e6f6ee; --vystraha: #b7791f; --vystraha-pozadi: #fdf4e3;
+    --chyba: #d63939; --chyba-pozadi: #fdecec;
+    --odkaz: #5b3fd9; --odkaz-hover: #3f27b0; --akcent-svetly: #5b3fd9; --doporuceno-pozadi: #ece7ff;
+    --ok-okraj: #a6dfc3; --pozor-text: #8a5a0f; --pozor-okraj: #f0d49a;
+    --stin: rgba(30,20,80,.12); --cara: rgba(0,0,0,.08); color-scheme: light; } }
+  .karta { box-shadow: 0 1px 3px var(--cara); }
+  .tema { background: none; border: 1px solid var(--okraj); border-radius: 99px; color: var(--tlumene); cursor: pointer;
+          margin-left: .6rem; padding: .1rem .35rem; line-height: 0; vertical-align: middle; transition: color .2s, border-color .2s, transform .3s; }
+  .tema:hover { color: var(--text); border-color: var(--akcent); transform: rotate(20deg); }
+  .tema svg { width: 1rem; height: 1rem; }
+  body { transition: background-color .3s, color .3s; }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0 1rem; background: var(--pozadi); color: var(--text);
+         font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 64rem; margin: 0 auto; padding: 2rem 0 1rem; }
+  a { color: var(--odkaz); }
+  a:hover { color: var(--odkaz-hover); }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .84em; background: var(--pole);
+         border: 1px solid var(--okraj); border-radius: 5px; padding: .08rem .38rem; word-break: break-all; }
+
+  .hlava { display: flex; gap: 1rem; align-items: center; }
+  .hlava img { width: 72px; height: 72px; border-radius: 16px; flex: none; }
+  h1 { font-size: 2rem; margin: 0; line-height: 1.15; }
+  .podtitul { color: var(--tlumene); margin: .2rem 0 0; }
+
+  h2 { font-size: 1.25rem; margin: 0 0 .9rem; }
+  .mrizka { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2.25rem; }
+  @media (max-width: 52rem) { .mrizka { grid-template-columns: 1fr; } }
+  .karta { background: var(--panel); border: 1px solid var(--okraj); border-radius: 14px; padding: 1.2rem;
+           display: flex; flex-direction: column; }
+  .karta h3 { margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: .5rem; }
+  .karta .kde { color: var(--tlumene); font-size: .85rem; margin: .1rem 0 .7rem; }
+  .karta p { margin: 0 0 .7rem; color: var(--tlumene); font-size: .92rem; }
+  .karta ol { margin: 0 0 .9rem; padding-left: 1.1rem; font-size: .9rem; }
+  .karta li { margin: .3rem 0; }
+  .tlacitka { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: auto; padding-top: .4rem; }
+  .tl { display: inline-block; font-weight: 600; font-size: .9rem; padding: .55rem .95rem; border-radius: 9px;
+        border: 1px solid var(--okraj); background: var(--pole); color: var(--text); text-decoration: none; cursor: pointer; font-family: inherit; }
+  .tl:hover { border-color: var(--akcent); color: var(--text); }
+  .tl.hlavni { background: var(--akcent); border-color: var(--akcent); color: #fff; }
+  .tl.hlavni:hover { background: var(--akcent-tmavy); }
+  .aplikace { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 .8rem; }
+  .aplikace span { font-size: .75rem; padding: .1rem .5rem; border-radius: 99px; border: 1px solid var(--okraj); color: var(--tlumene); }
+
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  .tabulka { overflow-x: auto; background: var(--panel); border: 1px solid var(--okraj); border-radius: 14px; }
+  th, td { text-align: left; padding: .65rem .9rem; border-bottom: 1px solid var(--okraj); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  th { color: var(--tlumene); font-weight: 500; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+  td:first-child { white-space: nowrap; }
+  td .tlumene { color: var(--tlumene); }
+  .stav { color: var(--ok); font-size: .85rem; min-height: 1.3em; margin-top: .4rem; }
+  .verze { display: inline-flex; align-items: center; gap: .45rem; font-size: .8rem; color: var(--tlumene);
+           text-decoration: none; margin: -.3rem 0 .8rem; }
+  .verze[hidden] { display: none; }
+  .verze strong { color: var(--text); font-weight: 600; }
+  .verze::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: var(--ok);
+                   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+  .verze:hover strong { color: var(--akcent); }
+  .ik { width: 1.2em; height: 1.2em; flex: none; color: var(--akcent); vertical-align: -.2em; }
+  .jazyky { margin-left: auto; align-self: flex-start; font-size: .8rem; color: var(--tlumene); white-space: nowrap; }
+  .jazyky a { color: var(--tlumene); text-decoration: none; padding: .1rem .2rem; }
+  .jazyky a:hover { color: var(--text); }
+  .jazyky a[aria-current] { color: var(--text); font-weight: 600; }
+  footer { margin: 2.5rem 0 2rem; color: var(--tlumene); font-size: .82rem; text-align: center; }
+  /* animace: nástup obsahu, pulzující tečka živé verze, zvednutí karet */
+  @keyframes nastup { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes puls { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); }
+                    70% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--ok) 0%, transparent); }
+                    100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 0%, transparent); } }
+  @keyframes vznast { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+  header, main > p, h2, .tabulka { animation: nastup .6s ease-out both; }
+  .mrizka .karta { animation: nastup .6s ease-out both; }
+  .mrizka .karta:nth-child(2) { animation-delay: .1s; }
+  .mrizka .karta:nth-child(3) { animation-delay: .2s; }
+  header img { animation: vznast 4s ease-in-out infinite; }
+  .karta { transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
+  .karta:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--akcent) 55%, var(--okraj));
+                 box-shadow: 0 12px 30px -12px color-mix(in srgb, var(--akcent) 45%, transparent); }
+  .karta:hover .ik { transform: scale(1.15) rotate(-6deg); }
+  .ik { transition: transform .25s ease; }
+  .tl { transition: background .2s, border-color .2s, transform .15s; }
+  .tl:hover { transform: translateY(-1px); }
+  .tl:active { transform: scale(.97); }
+  .verze:not([hidden]) { animation: nastup .5s ease-out both; }
+  .verze::before { animation: puls 2s ease-out infinite; }
+  @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+  .tl { display: inline-flex; align-items: center; gap: .45rem; }
+  .ti { width: 1.05em; height: 1.05em; flex: none; transition: transform .2s ease; }
+  .tl:hover .ti { transform: scale(1.18) rotate(-8deg); }
+</style>
+</head>
+<body>
+<main>
+  <header class="hlava">
+    <img src="https://raw.githubusercontent.com/nokturno-app/plugin.video.nokturno/main/resources/media/icon2.png" alt="">
+    <div>
+      <h1>Nokturno</h1>
+      <p class="podtitul">Přehrávač <strong>tvého vlastního úložiště</strong> pro Kodi, Home Assistant a Stremio.</p>
+    </div>
+    <nav class="jazyky" aria-label="Jazyk"><a href="?lang=cs" hreflang="cs" lang="cs" aria-current="true">CZ</a> | <a href="?lang=sk" hreflang="sk" lang="sk">SK</a><button type="button" class="tema" id="tema"></button></nav>
+  </header>
+
+  <p style="color:var(--tlumene);font-size:.92rem;margin:1.2rem 0 2rem"><a href="__ZAKLAD__/terms">Právní upozornění</a> – Nokturno je především přehrávač vlastního úložiště, vyhledávače třetích stran jsou jen volitelná doplňková služba.</p>
+
+  <h2>Kde Nokturno běží</h2>
+  <div class="mrizka">
+    <div class="karta">
+      <h3><svg xmlns="http://www.w3.org/2000/svg" class="ik" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">  <path d="M3 9a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2l0 -9"/> <path d="M16 3l-4 4l-4 -4"/> </svg>Kodi</h3>
+      <p class="kde">Android TV, CoreELEC, LibreELEC, Windows, Linux</p>
+      <a class="verze" data-repo="nokturno-app/plugin.video.nokturno" target="_blank" rel="noopener" hidden></a>
+      <p>Plnohodnotný doplněk s menu, hledáním, Traktem, stahováním, titulky z OpenSubtitles, synchronizací více Kodi, pokračováním ve sledování, Hlídanými a společným sledováním (SyncWatch).</p>
+      <ol>
+        <li>Kodi → Nastavení → Správce souborů → Přidat zdroj:<br><code>https://nokturno.stream/repo/</code></li>
+        <li>Doplňky → Instalovat ze ZIP → <strong>repository.nokturno</strong></li>
+        <li>Instalovat z repozitáře → Nokturno → Video doplňky → <strong>Nokturno</strong></li>
+      </ol>
+      <div class="tlacitka">
+        <button type="button" class="tl hlavni" data-kopirovat="https://nokturno.stream/repo/"><svg xmlns="http://www.w3.org/2000/svg" class="ti" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2 2 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/></svg>Zkopírovat zdroj</button>
+        <a class="tl" href="https://nokturno-app.github.io/nokturno-napoveda/navody/kodi/" target="_blank" rel="noopener"><svg xmlns="http://www.w3.org/2000/svg" class="ti" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6v13"/><path d="M12 6v13"/><path d="M21 6v13"/></svg>Návod</a>
+      </div>
+    </div>
+
+    <div class="karta">
+      <h3><svg xmlns="http://www.w3.org/2000/svg" class="ik" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">  <path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12"/> <path d="M8 4l0 16"/> <path d="M16 4l0 16"/> <path d="M4 8l4 0"/> <path d="M4 16l4 0"/> <path d="M4 12l16 0"/> <path d="M16 8l4 0"/> <path d="M16 16l4 0"/> </svg>Stremio a spol.</h3>
+      <p class="kde">Počítač, telefon, TV – všude, kde jdou doplňky Stremia</p>
+      <span class="verze"><strong>verze __VERZE__</strong></span>
+      <div class="aplikace"><span>Stremio</span><span>Nuvio</span><span>Streamlet</span></div>
+      <p>Streamy Nokturna se objeví v detailu filmu nebo dílu mezi ostatními. Účty vyplníš ve formuláři,
+        ten ti vyrobí vlastní adresu doplňku a rovnou ho přidá do aplikace.</p>
+      <div class="tlacitka">
+        <a class="tl hlavni" href="__ZAKLAD__/configure"><svg xmlns="http://www.w3.org/2000/svg" class="ti" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Nastavit a přidat</a>
+        <a class="tl" href="https://nokturno-app.github.io/nokturno-napoveda/navody/stremio/" target="_blank" rel="noopener"><svg xmlns="http://www.w3.org/2000/svg" class="ti" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6v13"/><path d="M12 6v13"/><path d="M21 6v13"/></svg>Návod</a>
+      </div>
+    </div>
+
+    <div class="karta">
+      <h3><svg xmlns="http://www.w3.org/2000/svg" class="ik" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">  <path d="M19 8.71l-5.333 -4.148a2.666 2.666 0 0 0 -3.274 0l-5.334 4.148a2.665 2.665 0 0 0 -1.029 2.105v7.2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-7.2c0 -.823 -.38 -1.6 -1.03 -2.105"/> <path d="M16 15c-2.21 1.333 -5.792 1.333 -8 0"/> </svg>Home Assistant</h3>
+      <p class="kde">Integrace přes HACS a karta do dashboardu</p>
+      <a class="verze" data-repo="nokturno-app/nokturno-ha" target="_blank" rel="noopener" hidden></a>
+      <p>Hledání z karty, přehrání v Kodi, stahování s titulky, odkaz do mobilu
+        a Hlídané – nové díly i filmy, které teprve vyjdou. Synchronizuje se s Kodi.</p>
+      <div class="tlacitka">
+        <a class="tl hlavni" href="https://my.home-assistant.io/redirect/hacs_repository/?owner=nokturno-app&amp;repository=nokturno-ha&amp;category=integration" target="_blank" rel="noopener"><svg xmlns="http://www.w3.org/2000/svg" class="ti" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>Otevřít v HACS</a>
+        <a class="tl" href="https://nokturno-app.github.io/nokturno-napoveda/navody/ha/" target="_blank" rel="noopener"><svg xmlns="http://www.w3.org/2000/svg" class="ti" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6v13"/><path d="M12 6v13"/><path d="M21 6v13"/></svg>Návod</a>
+      </div>
+    </div>
+  </div>
+  <div class="stav" id="stav"></div>
+
+  <footer>Nokturno pro Stremio __VERZE__ · anonymní statistiky, hesla se na serveru neukládají · <a href="https://nokturno-app.github.io/nokturno-napoveda/" target="_blank" rel="noopener">nápověda</a> · <a href="https://discord.gg/ChmMPmDDEj" target="_blank" rel="noopener">Discord</a> · <a href="__ZAKLAD__/terms">právní upozornění</a></footer>
+</main>
+<script>
+document.querySelectorAll("[data-kopirovat]").forEach((tl) => tl.addEventListener("click", async () => {
+  const stav = document.getElementById("stav");
+  try {
+    await navigator.clipboard.writeText(tl.dataset.kopirovat);
+    stav.textContent = "Zkopírováno: " + tl.dataset.kopirovat;
+  } catch {
+    stav.textContent = "Kopírování prohlížeč nedovolil – adresu opiš z návodu.";
+  }
+}));
+</script>
+<script>
+// Poslední stabilní vydání živě z GitHubu (releases/latest pre-release vynechá).
+// Cache v sessionStorage kvůli limitu 60 dotazů/h na adresu; bez odpovědi zůstane řádek skrytý.
+(() => {
+  const L = document.documentElement.lang === "sk"
+    ? { v: "verzia", d: "vydané" } : { v: "verze", d: "vydáno" };
+  const rtf = new Intl.RelativeTimeFormat(document.documentElement.lang || "cs", { numeric: "auto" });
+  const kdy = (iso) => {
+    const s = (new Date(iso) - Date.now()) / 1000;
+    for (const [j, n] of [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]])
+      if (Math.abs(s) >= n) return rtf.format(Math.round(s / n), j);
+    return rtf.format(0, "minute");
+  };
+  document.querySelectorAll("[data-repo]").forEach(async (el) => {
+    const klic = "rel:" + el.dataset.repo;
+    let r;
+    try { r = JSON.parse(sessionStorage.getItem(klic)); } catch {}
+    if (!r || Date.now() - r.t > 600000) {
+      try {
+        const o = await fetch("https://api.github.com/repos/" + el.dataset.repo + "/releases/latest");
+        if (!o.ok) return;
+        const j = await o.json();
+        r = { tag: j.tag_name, at: j.published_at, url: j.html_url, t: Date.now() };
+        try { sessionStorage.setItem(klic, JSON.stringify(r)); } catch {}
+      } catch { return; }
+    }
+    el.href = r.url;
+    el.title = new Date(r.at).toLocaleString(document.documentElement.lang || "cs");
+    el.innerHTML = "";
+    const b = document.createElement("strong");
+    b.textContent = L.v + " " + r.tag.replace(/^v/, "");
+    el.append(b, " · " + L.d + " " + kdy(r.at));
+    el.hidden = false;
+  });
+})();
+</script>
+<script>
+(() => {
+  const tl = document.getElementById("tema"); if (!tl) return;
+  const root = document.documentElement, sk = root.lang === "sk";
+  const ted = () => root.dataset.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  const kresli = () => {
+    const svetly = ted() === "light";
+    tl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + (svetly ? '<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>' : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>') + '</svg>';
+    tl.title = svetly ? (sk ? "Tmavý vzhľad" : "Tmavý vzhled") : (sk ? "Svetlý vzhľad" : "Světlý vzhled");
+    tl.setAttribute("aria-label", tl.title);
+  };
+  tl.addEventListener("click", () => {
+    root.dataset.theme = ted() === "light" ? "dark" : "light";
+    try { localStorage.setItem("nokturno-tema", root.dataset.theme); } catch {}
+    kresli();
+  });
+  matchMedia("(prefers-color-scheme: light)").addEventListener("change", kresli);
+  kresli();
+})();
+</script>
+</body>
+</html>

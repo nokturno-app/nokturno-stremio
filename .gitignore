@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# cache jádra a nastavení s účty — do repa nepatří ani omylem
+data/
+.env
+build/
+dist/

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nokturno</title>
+<style>
+  /* paleta webu Nokturna (nokturno/static/index.html) */
+  :root { --pozadi: #0d0c1d; --panel: #17162b; --pole: #201f38; --okraj: #2f2d4d; --text: #e8e6f5;
+          --tlumene: #9a97b8; --akcent: #7b5bf5; --akcent-tmavy: #6547d6; --ok: #3ecf8e; --chyba: #ff6b6b;
+          --odkaz: #a993ff; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 1.5rem 1rem 2rem; background: var(--pozadi); color: var(--text);
+         font: 15px/1.6 system-ui, -apple-system, Roboto, sans-serif; }
+  main { max-width: 40rem; margin: 0 auto; }
+  .hlava { display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem; }
+  .hlava img { width: 64px; height: 64px; border-radius: 14px; flex: none; }
+  h1 { font-size: 1.7rem; margin: 0; line-height: 1.15; }
+  .stav { display: inline-flex; align-items: center; gap: .45rem; color: var(--tlumene); margin-top: .25rem; }
+  .tecka { width: .6rem; height: .6rem; border-radius: 50%; background: var(--tlumene); }
+  .stav.ok .tecka { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .stav.chyba .tecka { background: var(--chyba); }
+  .karta { background: var(--panel); border: 1px solid var(--okraj); border-radius: 14px; padding: 1.1rem 1.2rem;
+           margin-bottom: 1rem; }
+  .karta h2 { font-size: 1.05rem; margin: 0 0 .2rem; }
+  .karta p { margin: 0 0 .8rem; color: var(--tlumene); font-size: .9rem; }
+  .adresa { display: flex; gap: .5rem; align-items: stretch; }
+  .adresa a { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .88rem;
+              color: var(--odkaz); background: var(--pole); border: 1px solid var(--okraj); border-radius: 9px;
+              padding: .6rem .75rem; text-decoration: none; word-break: break-all; }
+  .tl { font: inherit; font-weight: 600; font-size: .88rem; padding: .55rem .9rem; border-radius: 9px; cursor: pointer;
+        border: 1px solid var(--okraj); background: var(--pole); color: var(--text); }
+  .tl.hlavni { display: block; width: 100%; background: var(--akcent); border-color: var(--akcent); color: #fff;
+               font-size: 1rem; padding: .8rem; margin-bottom: 1rem; }
+  /* ovládání šipkami na TV: fokus musí být vidět */
+  a:focus, .tl:focus { outline: 3px solid var(--akcent); outline-offset: 2px; }
+  .tl.hlavni:focus { outline-color: #fff; }
+  .pata { color: var(--tlumene); font-size: .8rem; text-align: center; margin-top: 1.5rem; }
+</style>
+</head>
+<body>
+<main>
+  <div class="hlava">
+    <img src="file:///android_res/mipmap/ic_launcher.png" alt="" onerror="this.remove()">
+    <div>
+      <h1>Nokturno</h1>
+      <div class="stav" id="stav"><span class="tecka"></span><span id="stav-text">Spouštím…</span></div>
+    </div>
+  </div>
+
+  <button class="tl hlavni" id="nastavit" autofocus>Nastavit a přidat do Stremia</button>
+
+  <div class="karta">
+    <h2>Na tomto zařízení</h2>
+    <p>Stremio nebo Nuvio na tomhle zařízení – otevři nastavení a přidej doplněk.</p>
+    <div class="adresa" id="mistni"></div>
+  </div>
+
+  <div class="karta" id="sit" hidden>
+    <h2>Z jiného zařízení v síti</h2>
+    <p>Nastavení otevři v prohlížeči na počítači nebo mobilu ve stejné síti.</p>
+    <div class="adresa" id="sit-nastaveni"></div>
+    <p style="margin:.9rem 0 .8rem">Stremio na jiném zařízení chce HTTPS – formulář tuhle adresu použije sám:</p>
+    <div class="adresa" id="sit-https"></div>
+  </div>
+
+  <div class="pata" id="pata">Běží na pozadí i po zavření aplikace.</div>
+</main>
+<script>
+const q = new URLSearchParams(location.search);
+const ip = q.get("ip"), verze = q.get("v");
+const MISTNI = "http://127.0.0.1:7140/configure";
+
+function adresa(kam, url) {
+  const box = document.getElementById(kam);
+  const a = document.createElement("a");
+  a.href = url; a.textContent = url;
+  a.addEventListener("click", (e) => { e.preventDefault(); Nokturno.otevri(url); });
+  const tl = document.createElement("button");
+  tl.className = "tl"; tl.textContent = "Kopírovat";
+  tl.addEventListener("click", () => Nokturno.kopiruj(url));
+  box.append(a, tl);
+}
+
+adresa("mistni", MISTNI);
+if (ip) {
+  document.getElementById("sit").hidden = false;
+  adresa("sit-nastaveni", "http://" + ip + ":7140/configure");
+  adresa("sit-https", "https://" + ip.replace(/\./g, "-") + ".my.local-ip.co:7141");
+}
+document.getElementById("nastavit").addEventListener("click", () => Nokturno.otevri(MISTNI));
+if (verze) document.getElementById("pata").textContent += " · verze " + verze;
+
+function zkontroluj() {
+  const ok = Nokturno.bezi();
+  document.getElementById("stav").className = "stav " + (ok ? "ok" : "chyba");
+  document.getElementById("stav-text").textContent = ok ? "Běží" : "Spouštím…";
+  setTimeout(zkontroluj, ok ? 10000 : 2000);
+}
+zkontroluj();
+</script>
+</body>
+</html>

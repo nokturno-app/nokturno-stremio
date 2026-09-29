@@ -1,0 +1,70 @@
+plugins {
+    id "com.android.application"
+    id "com.chaquo.python"
+}
+
+// verze z doplňku (nokturno/routes.py), číslo verze pro Android z ní
+def verze = (new File(rootDir, "../../nokturno/routes.py").text =~ /(?m)^VERZE = "([^"]+)"/)[0][1]
+def cisla = verze.tokenize(".").collect { it as int } + [0, 0, 0]
+def kod = cisla[0] * 1000000 + cisla[1] * 1000 + cisla[2]
+
+android {
+    namespace "cz.nokturno.server"
+    compileSdk 35
+    defaultConfig {
+        applicationId "cz.nokturno.server"
+        minSdk 24
+        targetSdk 35
+        versionCode kod
+        versionName verze
+        ndk { abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64" }
+    }
+    signingConfigs {
+        // stálý klíč z tajemství CI (jinak by se APK nedalo aktualizovat přes starou verzi)
+        vydani {
+            def ks = System.getenv("NOKTURNO_KEYSTORE")
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv("NOKTURNO_KEYSTORE_HESLO")
+                keyAlias System.getenv("NOKTURNO_KEY_ALIAS") ?: "nokturno"
+                keyPassword System.getenv("NOKTURNO_KEYSTORE_HESLO")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig System.getenv("NOKTURNO_KEYSTORE") ? signingConfigs.vydani : signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        // 3.11: Chaquopy s 3.12+ neumí 32bitový Android (armeabi-v7a), na kterém běží hodně TV boxů
+        version = "3.11"
+        // doplněk čte šablony stránek ze složky balíku, musí ležet na disku
+        extractPackages("nokturno", "nokturno_apk")
+        pyc { src = false }
+    }
+}
+
+// kód doplňku a zavaděč se kopírují z repa, v projektu APK neleží
+tasks.register("kodDoplnku", Copy) {
+    from(new File(rootDir, "../../nokturno")) { exclude "**/__pycache__/**" }
+    into "src/main/python/nokturno"
+}
+tasks.register("zavadec", Copy) {
+    from new File(rootDir, "../zavadec.py")
+    into "src/main/python/nokturno_apk"
+    doLast { new File(projectDir, "src/main/python/nokturno_apk/version.txt").text = verze }
+}
+preBuild.dependsOn("kodDoplnku", "zavadec")
+// Chaquopy čte src/main/python vlastními úlohami, Gradle chce závislost výslovně
+tasks.configureEach { t ->
+    if (t.name.contains("Python")) t.dependsOn("kodDoplnku", "zavadec")
+}

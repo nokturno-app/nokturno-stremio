@@ -1,0 +1,106 @@
+"""Anonymní statistiky doplňku pro Stremio — stejný sběrný bod jako Kodi a HA.
+
+Jedna instalace = jedno nastavení doplňku (otisk adresy), ne jeden server: kdo si
+doplněk přidal s vlastní adresou, má vlastní složku jádra (`Enginy`) a v ní
+vlastní `stats.json` s náhodným id. Z adresy se nic neposílá — ani účty, ani
+otisk. Jde jen verze, které zdroje má to nastavení zapnuté a u kterých titulů se
+otevřely streamy (`core/lib/stats.py`), nejvýš jednou za 6 hodin.
+
+Vypnout jde proměnnou prostředí `NOKTURNO_STATS=0`. I pak se ale při otevření
+streamů nejvýš jednou za 6 hodin pošle ping — jen náhodné id, produkt a verze,
+aby bylo vidět, že nastavení žije. Tituly ani zdroje ne.
+"""
+import logging
+import os
+import threading
+from collections import OrderedDict
+
+from .core.engine import split_episode_id
+from .core.lib.stats import COLLECT_URL, Stats
+
+_LOGGER = logging.getLogger(__name__)
+VYPNUTO = ("0", "false", "ne", "no", "off")
+
+
+class Statistiky:
+    def __init__(self, verze, zapnuto=True, url=COLLECT_URL):
+        self.verze = verze
+        self.zapnuto = zapnuto
+        self.url = url
+        self._zamek = threading.Lock()
+        self._stats = OrderedDict()   # jádra vypadávají z LRU, tohle by jinak rostlo navždy
+        self.limit = 50
+
+    @classmethod
+    def z_prostredi(cls, verze, environ=None):
+        env = os.environ if environ is None else environ
+        return cls(verze, zapnuto=str(env.get("NOKTURNO_STATS", "1")).strip().lower() not in VYPNUTO)
+
+    def zaznamenej(self, engine, ctype, item_id, aplikace="stremio"):
+        """Po zobrazení streamů — na pozadí, odpověď Stremiu kvůli tomu nečeká.
+
+        `aplikace` je appka podle User-Agentu (`routes.klient_z_useragent`) —
+        „nuvio" / „streamlet" / „stremio"."""
+        cil = self.zpracuj if self.zapnuto else self.ping
+        args = (engine, aplikace) if cil == self.ping else (engine, ctype, item_id, aplikace)
+        threading.Thread(target=cil, args=args, daemon=True, name="nokturno-statistiky").start()
+
+    def _pro(self, engine):
+        slozka = engine.store.dir
+        with self._zamek:
+            stats = self._stats.get(slozka)
+            if stats is None:
+                stats = self._stats[slozka] = Stats(slozka)
+                while len(self._stats) > self.limit:
+                    self._stats.popitem(last=False)
+            else:
+                self._stats.move_to_end(slozka)
+        return stats
+
+    def ping(self, engine, aplikace="stremio"):
+        """Vypnuté statistiky: jen „nastavení žije" (id, produkt, verze). Nikdy nevyhodí výjimku."""
+        try:
+            stats = self._pro(engine)
+            with self._zamek:
+                if not stats.due():
+                    return
+                ok, why = stats.send(self.url, version=self.verze, agent="Stremio nokturno",
+                                     product="stremio", client=aplikace, ping=True)
+            if not ok:
+                _LOGGER.info("ping neodeslán: %s", why)
+        except Exception as err:  # noqa: BLE001 – statistiky nesmí nic shodit
+            _LOGGER.debug("ping: %s", err)
+
+    def zpracuj(self, engine, ctype, item_id, aplikace="stremio"):
+        """Synchronní část (vlákno výš, testy přímo). Nikdy nevyhodí výjimku."""
+        try:
+            stats = self._pro(engine)
+            title, year, kind = self._titul(engine, ctype, item_id)
+            with self._zamek:
+                stats.note_play(item_id, title, year, kind)
+                if not stats.due():
+                    return
+                zdroje = [k for k, v in engine.sources().items() if v]
+                ok, why = stats.send(self.url, version=self.verze, platform="Stremio", lang="cs",
+                                     agent="Stremio nokturno", sources=zdroje, product="stremio",
+                                     client=aplikace)
+            if not ok:
+                _LOGGER.info("statistiky neodeslány: %s", why)
+        except Exception as err:  # noqa: BLE001 – statistiky nesmí nic shodit
+            _LOGGER.debug("statistiky: %s", err)
+
+    @staticmethod
+    def _titul(engine, ctype, item_id):
+        """Titul pro statistiky — vždy název seriálu/filmu, nikdy epizody: server
+        slučuje statistiky podle normalizovaného názvu (`db.canonical_key`), takže
+        skutečný název konkrétní epizody by rozštěpil sledovanost jednoho seriálu
+        na tolik „titulů", kolik různých epizod se sledovalo."""
+        _base, season, _episode = split_episode_id(item_id)
+        kind = "series" if season is not None or ctype == "series" else "movie"
+        try:
+            meta, _video = engine.meta(ctype, item_id)
+        except Exception:  # noqa: BLE001 – název je jen pro čitelnost přehledu
+            return "", None, kind
+        title = meta.get("_title") or meta.get("name") or ""
+        year = str(meta.get("year") or meta.get("releaseInfo") or "")[:4]
+        return title, (int(year) if year.isdigit() else None), kind

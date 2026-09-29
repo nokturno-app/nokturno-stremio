@@ -1,0 +1,7 @@
+.gradle/
+build/
+app/build/
+app/src/main/python/nokturno/
+app/src/main/python/nokturno_apk/zavadec.py
+app/src/main/python/nokturno_apk/version.txt
+local.properties

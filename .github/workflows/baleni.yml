@@ -1,0 +1,117 @@
+name: baleni
+# Samostatné programy pro 7 platforem a APK. Ručně = jen artefakty běhu. Tag v* = navíc vydání
+# ve veřejném repu nokturno-app/nokturno-stremio-app (release + update.json pro zavaděč).
+# GitHub App organizace nainstalovaná jen na nokturno-stremio-app (Contents: read and write):
+# proměnná NOKTURNO_APP_ID a tajemství NOKTURNO_APP_KEY (privátní klíč aplikace),
+# volitelně NOKTURNO_KEYSTORE_B64 + NOKTURNO_KEYSTORE_HESLO pro podpis APK.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  linux:
+    # v kontejneru Debianu (glibc 2.36), ať binárka běží i na starších systémech; ARM a 386 přes QEMU
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { plat: linux-amd64, docker: linux/amd64 }
+          - { plat: linux-arm64, docker: linux/arm64 }
+          - { plat: linux-arm,   docker: linux/arm/v7 }
+          - { plat: linux-386,   docker: linux/386 }
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - name: PyInstaller v Debianu
+        run: |
+          docker run --rm --platform ${{ matrix.docker }} -v "$PWD":/src -w /src python:3.12-bookworm bash -c \
+            "pip install -q pyinstaller && bash baleni/sestav.sh ${{ matrix.plat }} && chown -R $(id -u):$(id -g) dist build"
+      - uses: actions/upload-artifact@v4
+        with: { name: "${{ matrix.plat }}", path: dist/* }
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { plat: windows-amd64, os: windows-latest }
+          - { plat: macos-amd64,   os: macos-15-intel }
+          - { plat: macos-arm64,   os: macos-15 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyinstaller
+      - run: bash baleni/sestav.sh ${{ matrix.plat }}
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with: { name: "${{ matrix.plat }}", path: dist/* }
+
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.10.2" }
+      - name: Klíč pro podpis (tajemství repa, jinak ladicí)
+        env: { KS: "${{ secrets.NOKTURNO_KEYSTORE_B64 }}" }
+        run: |
+          if [ -n "$KS" ]; then echo "$KS" | base64 -d > "$RUNNER_TEMP/nokturno.jks"; echo "NOKTURNO_KEYSTORE=$RUNNER_TEMP/nokturno.jks" >> "$GITHUB_ENV"; fi
+      - name: Sestavit APK
+        working-directory: baleni/android
+        env: { NOKTURNO_KEYSTORE_HESLO: "${{ secrets.NOKTURNO_KEYSTORE_HESLO }}" }
+        run: gradle --no-daemon assembleRelease
+      - run: |
+          V=$(grep -oP '^VERZE = "\K[^"]+' nokturno/routes.py)
+          mkdir -p dist && cp baleni/android/app/build/outputs/apk/release/*.apk "dist/nokturno-$V.apk"
+      - uses: actions/upload-artifact@v4
+        with: { name: apk, path: dist/*.apk }
+
+  vydani:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, desktop, apk]
+    runs-on: ubuntu-latest
+    env:
+      APP_REPO: nokturno-app/nokturno-stremio-app
+    steps:
+      # Token GitHub App organizace (ne osobní PAT): release i update.json pak
+      # vydává bot aplikace, ne účet člověka.
+      - uses: actions/create-github-app-token@v1
+        id: app
+        with:
+          app-id: ${{ vars.NOKTURNO_APP_ID }}
+          private-key: ${{ secrets.NOKTURNO_APP_KEY }}
+          owner: nokturno-app
+          repositories: nokturno-stremio-app
+      - run: echo "GH_TOKEN=${{ steps.app.outputs.token }}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - name: Tag sedí s verzí
+        run: |
+          V=$(grep -oP '^VERZE = "\K[^"]+' nokturno/routes.py)
+          test "v$V" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME, VERZE $V"; exit 1; }
+          echo "V=$V" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with: { path: artefakty, merge-multiple: true }
+      - name: Balík pro zavaděč (zip + update.json)
+        run: bash baleni/balik.sh "https://github.com/$APP_REPO/releases/download/$GITHUB_REF_NAME" dist
+      - name: Release ve veřejném repu
+        run: |
+          # beta (9.1.0b1) jen jako pre-release; zavaděč umí jen čísla, update.json se nemění
+          PRE=""; [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || PRE="--prerelease"
+          gh release create "$GITHUB_REF_NAME" --repo "$APP_REPO" $PRE \
+            --title "Nokturno pro Stremio $V – opravy chyb" --notes "Opravy chyb." \
+            artefakty/* "dist/nokturno-$V.zip" dist/update.json
+          echo "PRE=$PRE" >> "$GITHUB_ENV"
+      - name: update.json ve veřejném repu (až po nahraném release, ať adresa zipu platí)
+        if: env.PRE == ''
+        run: |
+          SHA=$(gh api "repos/$APP_REPO/contents/update.json" -q .sha 2>/dev/null) || SHA=""
+          gh api -X PUT "repos/$APP_REPO/contents/update.json" \
+            -f message="$V" -f content="$(base64 -w0 dist/update.json)" ${SHA:+-f sha="$SHA"}

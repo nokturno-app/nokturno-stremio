@@ -1,0 +1,1313 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<script>try{var t=localStorage.getItem("nokturno-tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nokturno – nastavení doplňku pro Stremio</title>
+<link rel="icon" href="https://raw.githubusercontent.com/nokturno-app/plugin.video.nokturno/main/resources/media/icon2.png">
+<style>
+  :root {
+    --pozadi: #0d0c1d; --panel: #17162b; --panel-2: #1c1b33; --pole: #201f38; --okraj: #2f2d4d;
+    --text: #e8e6f5; --tlumene: #9a97b8; --akcent: #7b5bf5; --akcent-tmavy: #6547d6;
+    --ok: #3ecf8e; --ok-pozadi: #12291f; --vystraha: #f5a524; --vystraha-pozadi: #2a2214;
+    --chyba: #ff6b6b; --chyba-pozadi: #2c1518;
+  }
+  /* barvy mimo základní paletu; světlá verze níž, přepínač ☀/☾ ukládá volbu do localStorage */
+  :root { color-scheme: dark; --odkaz: #a993ff; --odkaz-hover: #c7b8ff; --akcent-svetly: #cbbcff;
+          --doporuceno-pozadi: #221c45; --ok-okraj: #22563f; --pozor-text: #ffd694; --pozor-okraj: #5a4318;
+          --stin: rgba(0,0,0,.5); --cara: rgba(255,255,255,.08); }
+  :root[data-theme="light"] { --pozadi: #f6f5fb; --panel: #ffffff; --panel-2: #f1effa; --pole: #f3f1fa; --okraj: #e2def0;
+    --text: #1c1a33; --tlumene: #5f5b7a; --akcent: #6d4ef0; --akcent-tmavy: #5a3dd8;
+    --ok: #13925f; --ok-pozadi: #e6f6ee; --vystraha: #b7791f; --vystraha-pozadi: #fdf4e3;
+    --chyba: #d63939; --chyba-pozadi: #fdecec;
+    --odkaz: #5b3fd9; --odkaz-hover: #3f27b0; --akcent-svetly: #5b3fd9; --doporuceno-pozadi: #ece7ff;
+    --ok-okraj: #a6dfc3; --pozor-text: #8a5a0f; --pozor-okraj: #f0d49a;
+    --stin: rgba(30,20,80,.12); --cara: rgba(0,0,0,.08); color-scheme: light; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --pozadi: #f6f5fb; --panel: #ffffff; --panel-2: #f1effa; --pole: #f3f1fa; --okraj: #e2def0;
+    --text: #1c1a33; --tlumene: #5f5b7a; --akcent: #6d4ef0; --akcent-tmavy: #5a3dd8;
+    --ok: #13925f; --ok-pozadi: #e6f6ee; --vystraha: #b7791f; --vystraha-pozadi: #fdf4e3;
+    --chyba: #d63939; --chyba-pozadi: #fdecec;
+    --odkaz: #5b3fd9; --odkaz-hover: #3f27b0; --akcent-svetly: #5b3fd9; --doporuceno-pozadi: #ece7ff;
+    --ok-okraj: #a6dfc3; --pozor-text: #8a5a0f; --pozor-okraj: #f0d49a;
+    --stin: rgba(30,20,80,.12); --cara: rgba(0,0,0,.08); color-scheme: light; } }
+  .karta { box-shadow: 0 1px 3px var(--cara); }
+  .tema { background: none; border: 1px solid var(--okraj); border-radius: 99px; color: var(--tlumene); cursor: pointer;
+          margin-left: .6rem; padding: .1rem .35rem; line-height: 0; vertical-align: middle; transition: color .2s, border-color .2s, transform .3s; }
+  .tema:hover { color: var(--text); border-color: var(--akcent); transform: rotate(20deg); }
+  .tema svg { width: 1rem; height: 1rem; }
+  body { transition: background-color .3s, color .3s; }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; padding: 0 1rem; background: var(--pozadi); color: var(--text);
+         font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding-top: 2rem; }
+  a { color: var(--odkaz); }
+  a:hover { color: var(--odkaz-hover); }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em;
+         background: var(--pole); border: 1px solid var(--okraj); border-radius: 5px; padding: .05rem .35rem; }
+
+  /* hlavička */
+  .hlava { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+  .hlava img { width: 64px; height: 64px; border-radius: 14px; flex: none; background: var(--panel); }
+  h1 { font-size: 1.65rem; margin: 0; line-height: 1.2; }
+  .podtitul { color: var(--tlumene); margin: .15rem 0 0; }
+  .uvod { color: var(--text); margin: 0 0 1.25rem; }
+  .kroky { display: flex; gap: .5rem; flex-wrap: wrap; margin: 0 0 1.75rem; padding: 0; list-style: none; }
+  .kroky a { display: inline-flex; align-items: center; gap: .45rem; padding: .35rem .8rem .35rem .4rem;
+             border: 1px solid var(--okraj); border-radius: 99px; color: var(--text); text-decoration: none;
+             font-size: .88rem; background: var(--panel); }
+  .kroky a:hover { border-color: var(--akcent); }
+  .kroky b { display: inline-grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%;
+             background: var(--akcent); color: #fff; font-size: .78rem; }
+
+  /* sekce kroků */
+  section { margin: 0 0 2.25rem; scroll-margin-top: 1rem; }
+  h2 { font-size: 1.2rem; margin: 0 0 .35rem; display: flex; align-items: center; gap: .6rem; }
+  h2 b { display: inline-grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%;
+         background: var(--akcent); color: #fff; font-size: .95rem; flex: none; }
+  .popis { color: var(--tlumene); margin: 0 0 1rem; }
+
+  .karta { background: var(--panel); border: 1px solid var(--okraj); border-radius: 14px; padding: 1.1rem 1.2rem; margin: 0 0 .9rem; }
+  .karta-hlava { display: flex; justify-content: space-between; align-items: flex-start; gap: .8rem; flex-wrap: wrap; margin-bottom: .35rem; }
+  h3 { font-size: 1.05rem; margin: 0; }
+  .stitek { font-size: .72rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
+            padding: .15rem .55rem; border-radius: 99px; border: 1px solid var(--okraj); color: var(--tlumene); white-space: nowrap; }
+  .stitek.doporuceno { color: var(--akcent-svetly); border-color: var(--akcent); background: var(--doporuceno-pozadi); }
+  .stitek.zdarma { color: var(--ok); border-color: var(--ok-okraj); background: var(--ok-pozadi); }
+  .karta p { margin: 0 0 .8rem; color: var(--tlumene); font-size: .92rem; }
+
+  .dvojice { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+  @media (max-width: 34rem) { .dvojice { grid-template-columns: 1fr; } .hlava img { width: 52px; height: 52px; } }
+  label.pole { display: block; margin-bottom: .75rem; }
+  label.pole > span { display: block; font-size: .82rem; color: var(--tlumene); margin-bottom: .3rem; }
+  input[type=text], input[type=password], input[type=number], input[type=url], select {
+    width: 100%; padding: .62rem .7rem; background: var(--pole); color: var(--text);
+    border: 1px solid var(--okraj); border-radius: 8px; font: inherit; }
+  input:focus, select:focus { outline: 2px solid var(--akcent); outline-offset: -1px; }
+  .heslo { position: relative; }
+  .heslo input { padding-right: 2.6rem; }
+  .heslo button { position: absolute; right: .3rem; top: 50%; transform: translateY(-50%); padding: .25rem .45rem;
+                  background: transparent; border: 0; color: var(--tlumene); font-size: .8rem; font-weight: 500; }
+  .heslo button:hover { color: var(--text); }
+  .drobne { font-size: .8rem; color: var(--tlumene); margin: -.35rem 0 .75rem; }
+
+  .prepinac { display: flex; align-items: flex-start; gap: .7rem; padding: .7rem 0; border-top: 1px solid var(--okraj); cursor: pointer; }
+  .prepinac:first-of-type { border-top: 0; padding-top: .2rem; }
+  .prepinac input { width: 1.15rem; height: 1.15rem; margin-top: .2rem; accent-color: var(--akcent); flex: none; }
+  .prepinac strong { display: block; font-weight: 600; font-size: .95rem; }
+  .prepinac small { display: block; color: var(--tlumene); font-size: .84rem; }
+
+  /* rozbalovací návody */
+  details.navod { margin-top: .2rem; border: 1px dashed var(--okraj); border-radius: 10px; background: var(--panel-2); }
+  details.navod summary { cursor: pointer; padding: .55rem .8rem; font-size: .88rem; color: var(--akcent-svetly);
+                          list-style: none; user-select: none; }
+  details.navod summary::-webkit-details-marker { display: none; }
+  details.navod summary::before { content: "▸"; display: inline-block; width: 1rem; color: var(--akcent); }
+  details.navod[open] summary::before { content: "▾"; }
+  details.navod .obsah { padding: 0 .9rem .8rem 1.8rem; font-size: .9rem; color: var(--text); }
+  details.navod ol, details.navod ul { margin: .1rem 0 .4rem; padding-left: 1.1rem; }
+  details.navod li { margin: .25rem 0; }
+  details.navod p { color: var(--tlumene); margin: .4rem 0 0; font-size: .86rem; }
+
+  .overeni { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; margin: .1rem 0 .8rem; }
+  .vysledek { font-size: .88rem; border-radius: 8px; padding: .35rem .65rem; }
+  .vysledek:empty { display: none; }
+  .vysledek.ok { color: var(--ok); background: var(--ok-pozadi); }
+  .vysledek.pozor { color: var(--pozor-text); background: var(--vystraha-pozadi); }
+  .vysledek.chyba { color: var(--chyba); background: var(--chyba-pozadi); }
+  .vysledek.info { color: var(--tlumene); background: var(--pole); }
+
+  .poznamka { background: var(--panel-2); border: 1px solid var(--okraj); border-left: 3px solid var(--akcent);
+              border-radius: 10px; padding: .75rem .95rem; font-size: .9rem; color: var(--tlumene); margin: .9rem 0 0; }
+  .poznamka strong { color: var(--text); }
+  .vystraha { background: var(--vystraha-pozadi); border: 1px solid var(--pozor-okraj); border-left: 3px solid var(--vystraha);
+              border-radius: 10px; padding: .75rem .95rem; color: var(--pozor-text); font-size: .9rem; margin: .9rem 0 0; }
+  .vystraha strong { color: var(--vystraha); }
+
+  button { font: inherit; font-weight: 600; padding: .7rem 1.15rem; border-radius: 9px; cursor: pointer;
+           border: 1px solid var(--okraj); background: var(--pole); color: var(--text); }
+  button:hover { border-color: var(--akcent); }
+  button:disabled { opacity: .55; cursor: progress; }
+  button.hlavni { background: var(--akcent); border-color: var(--akcent); color: #fff; }
+  button.hlavni:hover { background: var(--akcent-tmavy); }
+  .kratke { display: none; }
+  button.male { padding: .42rem .8rem; font-size: .86rem; }
+
+  /* lišta s instalací drží dole — neprůhledná, jinak se na mobilu překrývala s formulářem */
+  .akce { position: sticky; bottom: 0; z-index: 5; background: var(--panel); border: 1px solid var(--okraj);
+          border-bottom: 0; border-radius: 14px 14px 0 0; padding: .85rem 1rem; max-width: 47rem; margin: 0 auto;
+          box-shadow: 0 -10px 28px var(--stin); }
+  .akce-radek { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+  .akce-souhrn { font-size: .84rem; color: var(--tlumene); margin-left: auto; }
+  .stav { margin-top: .45rem; font-size: .88rem; color: var(--akcent-svetly); }
+  .stav:empty { display: none; }
+  .stav.chyba { color: var(--chyba); }
+  details.adresa { margin-top: .35rem; }
+  p.pozn { margin: .5rem 0 0; font-size: .82rem; color: var(--tlumene); }
+  details.adresa summary { cursor: pointer; font-size: .82rem; color: var(--tlumene); list-style: none; user-select: none; }
+  details.adresa summary::-webkit-details-marker { display: none; }
+  details.adresa summary::before { content: "▸ "; color: var(--akcent); }
+  details.adresa[open] summary::before { content: "▾ "; }
+  details.adresa pre { margin: .5rem 0 0; padding: .6rem .75rem; background: var(--pole); border: 1px solid var(--okraj);
+                       border-radius: 8px; max-height: 7rem; overflow: auto; font-family: ui-monospace, Menlo, Consolas, monospace;
+                       font-size: .74rem; white-space: pre-wrap; word-break: break-all; color: var(--tlumene); }
+
+  /* na telefonu lišta zabírala třetinu obrazovky — tlačítka vedle sebe, souhrn pryč */
+  @media (max-width: 34rem) {
+    .akce { padding: .6rem .7rem; }
+    .akce-radek { flex-wrap: nowrap; gap: .5rem; }
+    .akce-radek button { flex: 1; padding: .62rem .5rem; font-size: .9rem; white-space: nowrap; }
+    .akce-souhrn { display: none; }
+    .dlouhe { display: none; }
+    .kratke { display: inline; }
+    details.adresa { margin-top: .25rem; }
+    /* po souhlasu schovat text souhlasu, lišta jinak zabírá půl telefonu */
+    .akce:has(#souhlas-podminky:checked) > label.prepinac { display: none; }
+    #identita-pozn { font-size: .72rem; margin-top: .25rem; }
+  }
+  .zarizeni { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; }
+  @media (max-width: 40rem) { .zarizeni { grid-template-columns: 1fr; } }
+  .zarizeni .karta { margin: 0; }
+  .zarizeni.jine { grid-template-columns: repeat(2, 1fr); margin-top: .8rem; }
+  @media (max-width: 40rem) { .zarizeni.jine { grid-template-columns: 1fr; } }
+  .zarizeni h3 { font-size: .98rem; margin-bottom: .45rem; }
+  .zarizeni ol { margin: 0; padding-left: 1.1rem; font-size: .9rem; }
+  .zarizeni li { margin: .3rem 0; }
+
+  .faq details { border-top: 1px solid var(--okraj); }
+  .faq details:last-child { border-bottom: 1px solid var(--okraj); }
+  .faq summary { cursor: pointer; padding: .8rem .2rem; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 1rem; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; color: var(--akcent); font-size: 1.2rem; line-height: 1; }
+  .faq details[open] summary::after { content: "−"; }
+  .faq .obsah { padding: 0 .2rem .9rem; color: var(--tlumene); font-size: .92rem; }
+  .faq .obsah p { margin: 0 0 .5rem; }
+  .faq .obsah ul { margin: 0 0 .5rem; padding-left: 1.1rem; }
+
+  .uloziste { margin: .6rem 0; border-top: 1px solid var(--cara); padding-top: .5rem; }
+  .uloziste summary { cursor: pointer; font-weight: 600; margin-bottom: .4rem; }
+  .ik { width: 1.2em; height: 1.2em; flex: none; color: var(--akcent); vertical-align: -.2em; }
+  .zarizeni h3 { display: flex; align-items: center; gap: .45rem; }
+  .jazyky { margin-left: auto; align-self: flex-start; font-size: .8rem; color: var(--tlumene); white-space: nowrap; }
+  .jazyky a { color: var(--tlumene); text-decoration: none; padding: .1rem .2rem; }
+  .jazyky a:hover { color: var(--text); }
+  .jazyky a[aria-current] { color: var(--text); font-weight: 600; }
+  footer { margin: 2rem 0 7rem; color: var(--tlumene); font-size: .8rem; text-align: center; }
+  button.bez-souhlasu { opacity: .55; }
+  /* zvýraznění uvnitř lišty: záporný okraj vyváží padding, rozměry lišty se nemění a nic nepřetéká */
+  label.prepinac.pripomenout { border-radius: 8px; animation: zatres .45s ease;
+                               padding: .45rem .6rem !important; margin: -.45rem -.6rem .05rem;
+                               background: color-mix(in srgb, var(--chyba) 10%, transparent);
+                               box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chyba) 70%, transparent); }
+  label.prepinac.pripomenout input { outline: 2px solid var(--chyba); outline-offset: 1px; }
+  @keyframes zatres { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+  @media (prefers-reduced-motion: reduce) { label.prepinac.pripomenout { animation: none; } }
+  .vk-kat { border-top: 1px solid var(--okraj); padding: .9rem 0 .2rem; }
+  .vk-zanry { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 .6rem; }
+  .vk-zanry label { display: inline-flex; align-items: center; gap: .3rem; padding: .28rem .6rem; border: 1px solid var(--okraj);
+                    border-radius: 99px; font-size: .84rem; cursor: pointer; background: var(--pole); }
+  .vk-zanry input { accent-color: var(--akcent); }
+  .vk-kat [hidden] { display: none; }
+  #vk-pridat { margin-top: .6rem; }
+  .vk-zanry label:has(input:checked) { border-color: var(--akcent); }
+</style>
+</head>
+<body>
+<main>
+  <header class="hlava">
+    <img src="https://raw.githubusercontent.com/nokturno-app/plugin.video.nokturno/main/resources/media/icon2.png" alt="">
+    <div>
+      <h1>Nokturno pro Stremio</h1>
+      <p class="podtitul">Nastavení doplňku · verze __VERZE__</p>
+    </div>
+    <nav class="jazyky" aria-label="Jazyk"><a href="?lang=cs" hreflang="cs" lang="cs" aria-current="true">CZ</a> | <a href="?lang=sk" hreflang="sk" lang="sk">SK</a><button type="button" class="tema" id="tema"></button></nav>
+  </header>
+
+  <p class="uvod">
+    Nokturno přehrává ve Stremiu <strong>tvoje vlastní úložiště</strong> – soubory z WebDAV serveru, NASu
+    nebo domácího disku. Volitelně k němu připojíš i veřejné vyhledávače třetích stran (WebShare, Sosáč,
+    Sledujteto, FastShare, HellSpy, Přehraj.to, CZtor). Tituly hledáš ve Stremiu jako obvykle, streamy Nokturna
+    se objeví v detailu filmu nebo dílu mezi ostatními.
+  </p>
+
+  <ul class="kroky">
+    <li><a href="#zdroje"><b>1</b>Zdroje a účty</a></li>
+    <li><a href="#predvolby"><b>2</b>Předvolby</a></li>
+    <li><a href="#instalace"><b>3</b>Přidat do aplikace</a></li>
+    <li><a href="#otazky"><b>?</b>Časté otázky</a></li>
+  </ul>
+
+  <form id="form" autocomplete="off" onsubmit="return false">
+
+    <!-- ============================== 1. ZDROJE ============================== -->
+    <section id="zdroje">
+      <h2><b>1</b>Vlastní úložiště a zdroje</h2>
+      <p class="popis">Nokturno je především přehrávač <strong>tvého vlastního úložiště</strong> – nastav ho hned první kartou. Volitelně k němu můžeš připojit i veřejné vyhledávače třetích stran; účty zůstávají jen v adrese doplňku, server je nikam neukládá (výjimka je přihlášení CZtor, viz Časté otázky).</p>
+
+      <!-- Vlastní úložiště -->
+      <div class="karta">
+        <div class="karta-hlava">
+          <h3>Vlastní úložiště</h3>
+          <span class="stitek doporuceno">Hlavní zdroj · až 3 · WebDAV</span>
+        </div>
+        <p>Tvoje vlastní filmy a seriály na NAS, Nextcloudu nebo serveru s WebDAV. Nokturno projde složky a soubory přiřadí k titulům podle názvu souboru a složky nad ním („Sherlock/S01E02.mkv“).</p>
+        <div class="poznamka">
+          <strong>Nepřehraje se ve webovém Stremiu.</strong> Soubor z úložiště chce heslo a tu hlavičku umí poslat jen aplikace – <strong>Stremio pro počítač, Android a Android TV</strong>, nebo Nuvio. Ve Stremiu v prohlížeči se takový stream nespustí; v seznamu je poznáš podle upozornění u popisu. Data tečou z tvého úložiště rovnou k tobě, ne přes tento server.
+        </div>
+        <details class="uloziste" open>
+          <summary>Úložiště 1</summary>
+          <div class="dvojice">
+            <label class="pole"><span>Název (ukáže se u streamu)</span>
+              <input type="text" name="dav1_name" spellcheck="false" placeholder="třeba NAS"></label>
+            <label class="pole"><span>Adresa složky</span>
+              <input type="url" name="dav1_url" autocapitalize="off" spellcheck="false" placeholder="https://…"></label>
+            <label class="pole"><span>Uživatelské jméno</span>
+              <input type="text" name="dav1_username" autocapitalize="off" spellcheck="false"></label>
+            <label class="pole"><span>Heslo</span>
+              <span class="heslo"><input type="password" name="dav1_password" spellcheck="false">
+                <button type="button" class="ukazat" aria-label="Ukázat heslo">ukázat</button></span></label>
+          </div>
+        </details>
+        <details class="uloziste">
+          <summary>Úložiště 2</summary>
+          <div class="dvojice">
+            <label class="pole"><span>Název (ukáže se u streamu)</span>
+              <input type="text" name="dav2_name" spellcheck="false" placeholder="třeba NAS"></label>
+            <label class="pole"><span>Adresa složky</span>
+              <input type="url" name="dav2_url" autocapitalize="off" spellcheck="false" placeholder="https://…"></label>
+            <label class="pole"><span>Uživatelské jméno</span>
+              <input type="text" name="dav2_username" autocapitalize="off" spellcheck="false"></label>
+            <label class="pole"><span>Heslo</span>
+              <span class="heslo"><input type="password" name="dav2_password" spellcheck="false">
+                <button type="button" class="ukazat" aria-label="Ukázat heslo">ukázat</button></span></label>
+          </div>
+        </details>
+        <details class="uloziste">
+          <summary>Úložiště 3</summary>
+          <div class="dvojice">
+            <label class="pole"><span>Název (ukáže se u streamu)</span>
+              <input type="text" name="dav3_name" spellcheck="false" placeholder="třeba NAS"></label>
+            <label class="pole"><span>Adresa složky</span>
+              <input type="url" name="dav3_url" autocapitalize="off" spellcheck="false" placeholder="https://…"></label>
+            <label class="pole"><span>Uživatelské jméno</span>
+              <input type="text" name="dav3_username" autocapitalize="off" spellcheck="false"></label>
+            <label class="pole"><span>Heslo</span>
+              <span class="heslo"><input type="password" name="dav3_password" spellcheck="false">
+                <button type="button" class="ukazat" aria-label="Ukázat heslo">ukázat</button></span></label>
+          </div>
+        </details>
+        <div class="overeni">
+          <button type="button" class="male" id="overit-dav">Ověřit úložiště</button>
+          <span class="vysledek" id="vysledek-dav"></span>
+        </div>
+        <details class="navod">
+          <summary>Jak na to – adresa, heslo, jak pojmenovat soubory</summary>
+          <div class="obsah">
+            <ol>
+              <li>Adresa je složka na WebDAV, třeba <code>https://nas.example.cz/remote.php/dav/files/jmeno/Video/</code> (Nextcloud) nebo <code>https://server:10000/</code>. Tvar <code>davs://</code> z Kodi jde taky.</li>
+              <li>Jméno a heslo jsou ty, kterými se k úložišti přihlašuješ. Zůstanou jen v adrese doplňku; při přehrání je pošle tvůj přehrávač přímo úložišti, takže soubor neteče přes tento server.</li>
+              <li>Soubory pojmenuj jako obvykle: <code>Pelisky (1999).mkv</code>, nebo složka <code>Sherlock/Season 1/S01E02.mkv</code>. Nový soubor se ukáže nejpozději do hodiny.</li>
+            </ol>
+            <p>Úložiště musí být dosažitelné ze <strong>serveru doplňku</strong> (hledá v něm soubory) <strong>i ze zařízení, na kterém přehráváš</strong> (stahuje je). Adresy v domácí síti proto fungují jen s doplňkem, který běží u tebe doma.</p>
+          </div>
+        </details>
+      </div>
+
+      <p class="popis">Vyhledávače třetích stran – volitelná doplňková služba. Nokturno u nich žádný obsah nehostí ani neposkytuje, jen se na ně dotazuje tvým účtem.</p>
+
+      <!-- WebShare -->
+      <div class="karta">
+        <div class="karta-hlava">
+          <h3>WebShare</h3>
+          <span class="stitek">Volitelné · potřebuje VIP</span>
+        </div>
+        <p>Česká úschovna souborů. Přehrává se přímo z WebShare, takže to funguje odkudkoli.</p>
+        <div class="dvojice">
+          <label class="pole"><span>Uživatelské jméno nebo e-mail</span>
+            <input type="text" name="ws_username" autocapitalize="off" spellcheck="false"></label>
+          <label class="pole"><span>Heslo</span>
+            <span class="heslo"><input type="password" name="ws_password" spellcheck="false">
+              <button type="button" class="ukazat" aria-label="Ukázat heslo">ukázat</button></span></label>
+        </div>
+        <div class="overeni">
+          <button type="button" class="male" id="overit-ws">Ověřit účet</button>
+          <span class="vysledek" id="vysledek-ws"></span>
+        </div>
+        <details class="navod">
+          <summary>Jak na to – nemám účet / nevím, co vyplnit</summary>
+          <div class="obsah">
+            <ol>
+              <li>Zaregistruj se na <a href="https://webshare.cz/" target="_blank" rel="noopener">webshare.cz</a> – odkaz <em>Registrace</em> je nahoře na stránce, registrace je zdarma.</li>
+              <li>Po přihlášení si tamtéž kup <strong>VIP</strong>. Bez něj WebShare stahování zpomalí natolik, že se film nedá plynule přehrávat.</li>
+              <li>Sem vyplň stejné jméno (nebo e-mail) a heslo, jakým se přihlašuješ na web.</li>
+              <li>Klikni na <strong>Ověřit účet</strong> – ukáže, jestli přihlášení prošlo a kolik dní VIP ti zbývá.</li>
+            </ol>
+            <p><strong>Nechceš mít heslo v adrese čitelné?</strong> Místo hesla jde vložit 40znakový „salted hash“,
+              který používají i jiné doplňky (WebShare pro Kodi / Stremio). Doplněk ho pozná sám.</p>
+          </div>
+        </details>
+      </div>
+
+      <!-- Sosáč -->
+      <div class="karta">
+        <div class="karta-hlava">
+          <h3>Sosáč <span style="color:var(--tlumene);font-weight:400;font-size:.9rem">přes Streamuj.tv</span></h3>
+          <span class="stitek">Volitelné · účet Streamuj</span>
+        </div>
+        <p>České filmy a seriály s dabingem a titulky, pěkně po dílech. Streamy se přehrávají ze Streamuj.tv, proto chce účet tam.</p>
+        <div class="dvojice">
+          <label class="pole"><span>Uživatelské jméno Streamuj.tv</span>
+            <input type="text" name="streamuj_username" autocapitalize="off" spellcheck="false"></label>
+          <label class="pole"><span>Heslo</span>
+            <span class="heslo"><input type="password" name="streamuj_password" spellcheck="false">
+              <button type="button" class="ukazat" aria-label="Ukázat heslo">ukázat</button></span></label>
+        </div>
+        <div class="overeni">
+          <button type="button" class="male" id="overit-su">Zkontrolovat</button>
+          <span class="vysledek" id="vysledek-su"></span>
+        </div>
+        <details class="navod">
+          <summary>Jak na to – účet Streamuj.tv</summary>
+          <div class="obsah">
+            <ol>
+              <li>Založ si účet na <a href="https://www.streamuj.tv" target="_blank" rel="noopener">streamuj.tv</a>.</li>
+              <li>Bez účtu se Sosáč nepoužívá. Rychlost přehrávání určuje tvůj tarif na Streamuj.tv.</li>
+              <li>Vyplň jméno a heslo ze Streamuj.tv. Streamuj neumí přihlášení ověřit dopředu; špatné heslo se pozná až při přehrání.</li>
+            </ol>
+            <p><strong>Místo hesla</strong> jde vložit i jeho 32znakový otisk – ten ukládá doplněk Nokturno pro Kodi, dá se odtamtud opsat.</p>
+          </div>
+        </details>
+      </div>
+
+      <!-- Sledujteto -->
+      <div class="karta">
+        <div class="karta-hlava">
+          <h3>Sledujteto</h3>
+          <span class="stitek">Volitelné · potřebuje Premium</span>
+        </div>
+        <p>Česká úschovna videí s velkým výběrem filmů a seriálů, často s dabingem. Hledá se přes tvůj účet, přehrávat jde jen s Premium.</p>
+        <div class="dvojice">
+          <label class="pole"><span>E-mail</span>
+            <input type="text" name="st_email" autocapitalize="off" spellcheck="false" inputmode="email"></label>
+          <label class="pole"><span>Heslo</span>
+            <span class="heslo"><input type="password" name="st_password" spellcheck="false">
+              <button type="button" class="ukazat" aria-label="Ukázat heslo">ukázat</button></span></label>
+        </div>
+        <div class="overeni">
+          <button type="button" class="male" id="overit-st">Ověřit účet</button>
+          <span class="vysledek" id="vysledek-st"></span>
+        </div>
+        <details class="navod">
+          <summary>Jak na to – účet Sledujteto</summary>
+          <div class="obsah">
+            <ol>
+              <li>Zaregistruj se na <a href="https://www.sledujteto.cz/account/registration/" target="_blank" rel="noopener">sledujteto.cz</a> (zdarma, jde i přes Google).</li>
+              <li>Aktivuj si <strong>Premium</strong> v <a href="https://www.sledujteto.cz/credits/buy/" target="_blank" rel="noopener">ceníku</a>. Bez něj Sledujteto odkaz na přehrání nevydá – streamy se ukážou, ale nepustí se.</li>
+              <li>Sem vyplň e-mail a heslo, jakým se přihlašuješ na web, a klikni na <strong>Ověřit účet</strong>.</li>
+            </ol>
+            <p>Podle podmínek Sledujteto nesmí jeden účet používat lidé z různých domácností – adresu doplňku s účtem proto nikomu nedávej.</p>
+          </div>
+        </details>
+      </div>
+
+      <!-- FastShare -->
+      <div class="karta">
+        <div class="karta-hlava">
+          <h3>FastShare / Sdilej.cz</h3>
+          <span class="stitek">Volitelné · kredit nebo tarif</span>
+        </div>
+        <p>Česká úschovna souborů s velkým výběrem filmů a seriálů. Hledá se i bez účtu, přehrání se odečte z kreditu, pokud nemáš neomezené stahování. Účet ze Sdilej.cz funguje taky – soubory jsou stejné, jen přepni níž „Účet z“.</p>
+        <div class="poznamka">
+          <strong>Nepřehraje se ve webovém Stremiu.</strong> Soubor z FastShare chce ke stažení přihlášení a tu hlavičku umí poslat jen aplikace – <strong>Stremio pro počítač, Android a Android TV</strong>, nebo Nuvio. Ve Stremiu v prohlížeči se takový stream nespustí; v seznamu je poznáš podle upozornění u popisu. Data tečou z FastShare rovnou k tobě, ne přes tento server.
+        </div>
+        <div class="dvojice">
+          <label class="pole"><span>Uživatel</span>
+            <input type="text" name="fs_username" autocapitalize="off" spellcheck="false"></label>
+          <label class="pole"><span>Heslo</span>
+            <span class="heslo"><input type="password" name="fs_password" spellcheck="false">
+              <button type="button" class="ukazat" aria-label="Ukázat heslo">ukázat</button></span></label>
+        </div>
+        <label class="pole"><span>Účet z</span>
+          <select name="fs_provider">
+            <option value="fastshare">FastShare.cz</option><option value="sdilej">Sdilej.cz</option>
+          </select></label>
+        <div class="overeni">
+          <button type="button" class="male" id="overit-fs">Ověřit účet</button>
+          <span class="vysledek" id="vysledek-fs"></span>
+        </div>
+        <details class="navod">
+          <summary>Jak na to – účet FastShare / Sdilej.cz</summary>
+          <div class="obsah">
+            <ol>
+              <li>Zaregistruj se na <a href="https://fastshare.cz/" target="_blank" rel="noopener">fastshare.cz</a> nebo <a href="https://sdilej.cz/" target="_blank" rel="noopener">sdilej.cz</a> (u Sdilej.cz pak přepni „Účet z“).</li>
+              <li>Dobij si kredit, nebo si kup neomezené stahování. Každé přehrání se odečte z kreditu podle velikosti souboru.</li>
+              <li>Sem vyplň jméno a heslo, jakým se přihlašuješ na web, a klikni na <strong>Ověřit účet</strong>.</li>
+            </ol>
+          </div>
+        </details>
+      </div>
+
+      <!-- Přehraj.to -->
+      <div class="karta">
+        <div class="karta-hlava">
+          <h3>Přehraj.to</h3>
+          <span class="stitek">Volitelné · účet nutný</span>
+        </div>
+        <p>Česká úschovna s velkým výběrem. Ve Stremiu potřebuje <strong>účet</strong> (na rozdíl od Kodi, kde jede i bez něj) – server je jedna IP a bez přihlášení by ho Přehraj.to hned omezil. S Premium účtem se hraje původní soubor včetně 4K, jinak překódovaná verze v 1080p. <strong>Hraje i ve webovém přehrávači</strong> (přímá adresa na CDN, žádná proxy).</p>
+        <div class="dvojice">
+          <label class="pole"><span>E-mail</span>
+            <input type="text" name="pt_email" autocapitalize="off" spellcheck="false"></label>
+          <label class="pole"><span>Heslo</span>
+            <span class="heslo"><input type="password" name="pt_password" spellcheck="false">
+              <button type="button" class="ukazat" aria-label="Ukázat heslo">ukázat</button></span></label>
+        </div>
+        <div class="overeni">
+          <button type="button" class="male" id="overit-pt">Ověřit účet</button>
+          <span class="vysledek" id="vysledek-pt"></span>
+        </div>
+        <details class="navod">
+          <summary>Jak na to – účet Přehraj.to</summary>
+          <div class="obsah">
+            <ol>
+              <li>Zaregistruj se na <a href="https://prehraj.to/" target="_blank" rel="noopener">prehraj.to</a>.</li>
+              <li>Pro původní soubory a plnou kvalitu si aktivuj <strong>Premium</strong>. Bez něj se přehrává překódovaná verze v 1080p.</li>
+              <li>Sem vyplň e-mail a heslo, jakým se přihlašuješ na web, a klikni na <strong>Ověřit účet</strong>.</li>
+            </ol>
+          </div>
+        </details>
+      </div>
+
+      <!-- CZtor -->
+      <div class="karta">
+        <div class="karta-hlava">
+          <h3>CZtor</h3>
+          <span class="stitek">Volitelné · předplatné</span>
+        </div>
+        <p>Placený katalog filmů a seriálů se streamy v plné kvalitě včetně 4K a dabingu. Nepřihlašuješ se heslem, ale <strong>spárováním PINem</strong> na cztor.com. Heslo ani přihlášení tu nezadáváš a server tvoje přihlášení drží zašifrované klíčem, který je jen v adrese tvého doplňku. <strong>Hraje i ve webovém přehrávači</strong> (přímá adresa, žádná proxy).</p>
+        <input type="hidden" name="cz">
+        <div class="overeni">
+          <button type="button" class="male" id="parovat-cz">Spárovat CZtor</button>
+          <button type="button" class="male" id="overit-cz" hidden>Ověřit účet</button>
+          <button type="button" class="male" id="zrusit-cz" hidden>Zrušit párování</button>
+          <span class="vysledek" id="vysledek-cz"></span>
+        </div>
+        <details class="navod">
+          <summary>Jak na to – účet CZtor</summary>
+          <div class="obsah">
+            <ol>
+              <li>Na <a href="https://cztor.com/" target="_blank" rel="noopener">cztor.com</a> si založ účet a aktivuj předplatné.</li>
+              <li>Klikni na <strong>Spárovat CZtor</strong>. Ukáže se PIN a odkaz na cztor.com/activate.</li>
+              <li>Tam se přihlas a PIN zadej. Formulář to za pár vteřin sám pozná.</li>
+              <li>Adresa doplňku se tím změní – doplněk pak <strong>nainstaluj znovu</strong> tlačítkem dole.</li>
+            </ol>
+          </div>
+        </details>
+      </div>
+
+      <!-- HellSpy -->
+      <div class="karta">
+        <div class="karta-hlava">
+          <h3>HellSpy</h3>
+          <span class="stitek zdarma">Zdarma · bez účtu</span>
+        </div>
+        <label class="prepinac">
+          <input type="checkbox" name="hs_enabled">
+          <span><strong>Používat HellSpy</strong>
+            <small>Veřejná úschovna s původními soubory (často ve vysoké kvalitě). Nic se nevyplňuje, stačí nechat zapnuté.</small></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- ============================== 2. PŘEDVOLBY ============================== -->
+    <section id="predvolby">
+      <h2><b>2</b>Předvolby</h2>
+      <p class="popis">Jak se mají streamy řadit a co skrýt. Výchozí nastavení vyhovuje většině, tento krok se dá přeskočit.</p>
+      <div class="karta">
+        <div class="dvojice">
+          <label class="pole"><span>Preferovaný jazyk zvuku</span>
+            <select name="pref_lang">
+              <option value="CZ">čeština</option><option value="SK">slovenština</option>
+              <option value="EN">angličtina</option><option value="HU">maďarština</option><option value="ANY">nezáleží</option>
+            </select></label>
+          <label class="pole"><span>Řazení streamů</span>
+            <select name="sort_streams">
+              <option value="quality">nejlepší kvalita nahoře</option>
+              <option value="size_desc">největší soubory nahoře</option>
+              <option value="size_asc">nejmenší soubory nahoře</option>
+              <option value="source">podle zdroje</option>
+            </select></label>
+        </div>
+        <p class="drobne">Streamy se zvoleným jazykem zvuku jdou nahoru. Ve Stremiu je bez posouvání vidět jen pár prvních řádků, proto na řazení záleží.</p>
+
+        <label class="prepinac">
+          <input type="checkbox" name="hide_sd">
+          <span><strong>Skrýt streamy v SD kvalitě</strong>
+            <small>Vynechá staré nahrávky v nízkém rozlišení (pod 720p).</small></span>
+        </label>
+        <label class="prepinac">
+          <input type="checkbox" name="hide_3d">
+          <span><strong>Skrýt 3D streamy</strong>
+            <small>Vynechá 3D verze filmů (SBS, OU, MVC), které se na běžné televizi nepřehrají správně.</small></span>
+        </label>
+        <label class="prepinac">
+          <input type="checkbox" name="pref_surround">
+          <span><strong>Upřednostnit prostorový zvuk 5.1</strong>
+            <small>Pro soundbar nebo domácí kino.</small></span>
+        </label>
+        <label class="pole" style="margin:.7rem 0 0"><span>Nejvyšší datový tok (Mb/s) – nepovinné</span>
+          <input type="number" name="max_bitrate_mbps" min="0" step="1" inputmode="numeric" placeholder="bez omezení"></label>
+        <p class="drobne" style="margin:.35rem 0 0">Pro pomalejší internet: soubory, které by se nestihly načítat, se nenabídnou.
+          Orientačně Full HD potřebuje 8–15 Mb/s, 4K 25–60 Mb/s.</p>
+      </div>
+
+      <!-- Katalogy -->
+      <div class="karta" id="karta-katalogy">
+        <div class="karta-hlava">
+          <h3>Katalogy</h3>
+          <span class="stitek">Volitelné · na domovské stránce Stremia</span>
+        </div>
+        <p>Seznamy filmů a seriálů přímo ve Stremiu. Zapni jen ty, které chceš vidět – detail titulu i díly seriálů pak dodá Stremio samo a streamy Nokturno jako obvykle. Seznamy se na serveru obnovují jednou za 6 hodin.</p>
+        <div id="katalogy"></div>
+        <input type="hidden" name="katalogy">
+        <input type="hidden" name="id">
+        <input type="hidden" name="jazyk">
+      </div>
+      <!-- Vlastní katalogy -->
+      <div class="karta" id="karta-vk">
+        <div class="karta-hlava">
+          <h3>Vlastní katalogy</h3>
+          <span class="stitek">Volitelné · až 5 katalogů</span>
+        </div>
+        <p>Poskládej si vlastní seznam podle žánru, původního jazyka a let – třeba české pohádky nebo korejské thrillery. Katalog se objeví na domovské stránce Stremia, tituly dodá server Nokturna. Po změně katalogu přidej doplněk znovu.</p>
+        <div id="vk"></div>
+        <button type="button" class="male" id="vk-pridat">Přidat katalog</button>
+        <input type="hidden" name="vk">
+      </div>
+    </section>
+  </form>
+
+  <!-- ============================== 3. INSTALACE ============================== -->
+  <section id="instalace">
+    <h2><b>3</b>Přidat do aplikace</h2>
+    <p class="popis">Tlačítka dole vyrobí z nastavení tvou vlastní adresu doplňku a otevřou s ní Stremio nebo Nuvio.
+      Stejná adresa funguje i ve Streamletu a v dalších aplikacích, které umí doplňky Stremia.</p>
+
+    <div class="zarizeni">
+      <div class="karta">
+        <h3><svg xmlns="http://www.w3.org/2000/svg" class="ik" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">  <path d="M3 19l18 0"/> <path d="M5 7a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v8a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1l0 -8"/> </svg>Počítač</h3>
+        <ol>
+          <li>Klikni na <strong>Přidat do Stremia</strong>.</li>
+          <li>Prohlížeč se zeptá, jestli otevřít Stremio – potvrď.</li>
+          <li>Ve Stremiu klikni na <strong>Instalovat</strong>.</li>
+        </ol>
+      </div>
+      <div class="karta">
+        <h3><svg xmlns="http://www.w3.org/2000/svg" class="ik" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">  <path d="M6 5a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-14"/> <path d="M11 4h2"/> <path d="M12 17v.01"/> </svg>Telefon</h3>
+        <ol>
+          <li>Otevři tuto stránku v telefonu, kde je Stremio nainstalované.</li>
+          <li>Klikni na <strong>Přidat do Stremia</strong> a potvrď <strong>Instalovat</strong>.</li>
+          <li>Když se Stremio neotevře, použij <strong>Zkopírovat adresu</strong> a postup vpravo.</li>
+        </ol>
+      </div>
+      <div class="karta">
+        <h3><svg xmlns="http://www.w3.org/2000/svg" class="ik" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">  <path d="M3 9a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2l0 -9"/> <path d="M16 3l-4 4l-4 -4"/> </svg>Televize</h3>
+        <ol>
+          <li>Nainstaluj doplněk na počítači nebo telefonu <strong>pod stejným účtem Stremio</strong>.</li>
+          <li>Doplňky se mezi zařízeními synchronizují samy – na TV se objeví do minuty.</li>
+          <li>Ruční cesta: Stremio → <strong>Doplňky</strong> → pole nahoře → vložit adresu → <strong>Instalovat</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="zarizeni jine">
+      <div class="karta">
+        <h3><svg xmlns="http://www.w3.org/2000/svg" class="ik" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">  <path d="M7 4v16l13 -8l-13 -8"/> </svg>Nuvio</h3>
+        <ol>
+          <li>Otevři tuto stránku na zařízení, kde je Nuvio nainstalované.</li>
+          <li>Klikni na <strong>Přidat do Nuvia</strong> a instalaci potvrď.</li>
+          <li>Nuvio na TV: <strong>Zkopírovat adresu</strong> a v Nuviu → Nastavení → Doplňky → vložit adresu → <strong>Instalovat</strong>.</li>
+        </ol>
+      </div>
+      <div class="karta">
+        <h3><svg xmlns="http://www.w3.org/2000/svg" class="ik" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">  <path d="M3 19l.01 0"/> <path d="M7 19a4 4 0 0 0 -4 -4"/> <path d="M11 19a8 8 0 0 0 -8 -8"/> <path d="M15 19h3a3 3 0 0 0 3 -3v-8a3 3 0 0 0 -3 -3h-12a3 3 0 0 0 -2.8 2"/> </svg>Streamlet</h3>
+        <ol>
+          <li>Streamlet odkaz pro přidání doplňku nemá – klikni na <strong>Zkopírovat adresu</strong>.</li>
+          <li>Ve Streamletu přidej doplněk Stremia (modul) a vlož zkopírovanou adresu.</li>
+          <li>Na TV adresu nejsnáz pošleš z telefonu, třeba zprávou pro sebe.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="vystraha">
+      <strong>Adresa doplňku obsahuje tvoje účty.</strong> Není zašifrovaná, jen zakódovaná.
+      Nikomu ji neposílej a nesdílej – kdo ji má, přehrává přes tvoje účty.
+    </div>
+  </section>
+
+  <!-- ============================== FAQ ============================== -->
+  <section id="otazky" class="faq">
+    <h2><b>?</b>Časté otázky</h2>
+
+    <details>
+      <summary>Nainstaloval jsem to, ale u filmu nevidím žádné streamy Nokturna</summary>
+      <div class="obsah">
+        <ul>
+          <li>Klikni výše na <strong>Ověřit účet</strong> – nejčastější příčinou je překlep v hesle nebo vypršelé VIP na WebShare.</li>
+          <li>Hledání trvá pár sekund. Stremio ukazuje streamy postupně, jak které doplňky odpovídají – chvilku počkej.</li>
+          <li>Titul nemusí na zdrojích vůbec být, hlavně úplné novinky a málo známé seriály.</li>
+          <li>Nokturno bere jen soubory, které k titulu opravdu patří (název, rok, díl). Podobné, ale jiné filmy záměrně vynechá.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>Stream se nechce přehrát nebo se často zasekává</summary>
+      <div class="obsah">
+        <ul>
+          <li>U WebShare bez VIP je rychlost omezená – přehrávání pak neustále čeká.</li>
+          <li>Zkus menší soubor (nižší kvalitu), nebo v předvolbách nastav <strong>nejvyšší datový tok</strong> podle svého internetu.</li>
+          <li>WebShare občas hlásí „soubor dočasně nedostupný“ – stačí vybrat jiný stream.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>Jak nastavení později změnit?</summary>
+      <div class="obsah">
+        <p>Ve Stremiu otevři <strong>Doplňky</strong> → <strong>Nokturno</strong> → ikona ozubeného kola (<em>Konfigurovat</em>).
+          Otevře se tato stránka s tvým současným nastavením. Uprav, co potřebuješ, a znovu klikni na <strong>Přidat do Stremia</strong> (nebo Nuvia).</p>
+        <p>Změněné nastavení je nová adresa – starou verzi doplňku pak ve Stremiu odinstaluj, jinak tam Nokturno zůstane dvakrát.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Kde jsou moje hesla uložená? Je to bezpečné?</summary>
+      <div class="obsah">
+        <p>Nikde na serveru. Celé nastavení je zakódované v adrese doplňku, kterou má uloženou tvoje Stremio.
+          Server ho při každém dotazu jen přečte, použije a zapomene. Tak fungují všechny konfigurovatelné doplňky Stremia.</p>
+        <p>Jediná výjimka je CZtor: jeho přihlášení drží server zašifrované klíčem, který je jen v tvé adrese doplňku. Bez adresy ho nikdo nepřečte.</p>
+        <p>Proto adresu nikomu neposílej. Kdo chce heslo WebShare v adrese nečitelné, může místo něj vložit salted hash (viz návod u WebShare).</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Posílá doplněk nějaké statistiky?</summary>
+      <div class="obsah">
+        <p>Ano, anonymní – stejně jako Nokturno pro Kodi a Home Assistant. Nejvýš jednou za 6 hodin odejde náhodný
+          identifikátor tvého nastavení, verze doplňku, které zdroje máš zapnuté a u kterých titulů se otevřely streamy.
+          Žádné účty, hesla ani adresa doplňku se neposílají. Slouží jen k tomu, abychom věděli, co se používá.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Jak nahlásit chybu v Kodi doplňku Nokturno?</summary>
+      <div class="obsah">
+        <p>V nastavení doplňku je v kategorii <strong>Pokročilé → Údržba</strong> tlačítko
+          <strong>Odeslat log Kodi</strong>. Pošle posledních pár set kilobajtů souboru
+          <code>kodi.log</code> na náš server – bez hesel a účtů, jen technický záznam toho,
+          co doplněk dělal. Před odesláním se ještě zeptá na potvrzení.</p>
+        <p>Log pak sami zkontrolujeme. Napiš k tomu i pár slov, co se stalo a kdy
+          (na <a href="https://discord.gg/ChmMPmDDEj" target="_blank" rel="noopener">Discord</a> do fóra #pomoc nebo do <a href="https://www.facebook.com/groups/nokturno" target="_blank" rel="noopener">skupiny Nokturno na Facebooku</a>), ať víme, který log hledat.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Má Nokturno vlastní katalogy?</summary>
+      <div class="obsah">
+        <p>Volitelně ano – v kroku 2 zapneš žebříčky a poskládáš si až pět vlastních katalogů podle žánru, jazyka a let. Plakáty a popisy dodá Stremio
+          (Cinemeta). Nokturno k titulu najde streamy z tvého úložiště a ze zapnutých zdrojů.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Jaký je rozdíl mezi zdroji?</summary>
+      <div class="obsah">
+        <ul>
+          <li><strong>Vlastní úložiště</strong> – tvoje soubory na NAS, v Nextcloudu nebo na serveru s WebDAV. Hlavní zdroj, hraje jen v aplikaci, ne v prohlížeči.</li>
+          <li><strong>WebShare</strong> – česká úschovna souborů, potřebuje placené VIP.</li>
+          <li><strong>Sosáč</strong> – ručně poskládaný katalog českých filmů a seriálů s dabingem a titulky, přehrává přes Streamuj.tv.</li>
+          <li><strong>Sledujteto</strong> – česká úschovna s velkým výběrem, hledá přes tvůj účet a přehrává s Premium.</li>
+          <li><strong>FastShare</strong> – česká úschovna s velkým výběrem, hledá i bez účtu, přehrává z kreditu nebo s neomezeným stahováním. Jen v aplikaci Stremio, ne v prohlížeči.</li>
+          <li><strong>HellSpy</strong> – veřejné soubory zdarma, bez účtu. Méně výběru, ale nic nestojí.</li>
+          <li><strong>Přehraj.to</strong> – česká úschovna, ve Stremiu potřebuje účet (server je jedna IP, bez přihlášení by ho Přehraj.to omezil). S Premium hraje původní soubor, jinak překódovanou verzi. Hraje i v prohlížeči.</li>
+          <li><strong>CZtor</strong> – placený katalog s plnou kvalitou, páruje se PINem na cztor.com (heslo nezadáváš). Hraje i v prohlížeči.</li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <footer><a href="__ZAKLAD__/">Nokturno</a> · <a href="https://nokturno-app.github.io/nokturno-napoveda/" target="_blank" rel="noopener">nápověda</a> · <a href="https://discord.gg/ChmMPmDDEj" target="_blank" rel="noopener">Discord</a> · nastavení se ukládá jen do adresy doplňku</footer>
+</main>
+
+<!-- lišta s instalací: vždy po ruce -->
+<div class="akce" id="akce">
+  <label class="prepinac" for="souhlas-podminky" style="padding-top:0;padding-bottom:.5rem">
+    <input type="checkbox" id="souhlas-podminky">
+    <span>Potvrzuji, že budu doplněk používat pouze k obsahu, ke kterému mám právo přístupu, a souhlasím s <a href="__ZAKLAD__/terms" target="_blank" rel="noopener">podmínkami použití</a>.</span>
+  </label>
+  <div class="akce-radek">
+    <button type="button" class="hlavni" id="instalovat"><span class="dlouhe">Přidat do Stremia</span><span class="kratke">Stremio</span></button>
+    <button type="button" class="hlavni" id="nuvio"><span class="dlouhe">Přidat do Nuvia</span><span class="kratke">Nuvio</span></button>
+    <button type="button" id="kopirovat">Zkopírovat<span class="dlouhe"> adresu</span></button>
+    <span class="akce-souhrn" id="souhrn-zdroju"></span>
+  </div>
+  <div class="stav" id="stav"></div>
+  <details class="adresa"><summary>Zobrazit adresu doplňku</summary><pre id="adresa"></pre></details>
+  <p id="identita-pozn" class="pozn" hidden>Adresa nese tvoji osobní identitu, i když v ní nejsou účty. Nikomu ji neposílej – kdo ji má, používá limity a případnou blokaci s tebou. Každý si má vyrobit vlastní na této stránce.</p>
+</div>
+
+<script>
+const ZAKLAD = "__ZAKLAD__";
+const ZAKLAD_DOPLNKU = "__ZAKLAD_DOPLNKU__";
+const form = document.getElementById("form");
+const $ = (id) => document.getElementById(id);
+
+// --- předvyplnění: z adresy, na které formulář stojí (Konfigurovat ve Stremiu) ---
+const soucasne = __NASTAVENI__;
+for (const [klic, hodnota] of Object.entries(soucasne)) {
+  const pole = form.elements[klic];
+  if (!pole || klic === "jazyk") continue;   // jazyk hlášek určuje stránka, ne stará adresa
+  if (pole.type === "checkbox") pole.checked = !!hodnota;
+  else if (klic === "pref_lang" && hodnota === "") pole.value = "ANY";   // server drží „nezáleží“ jako prázdné
+  else pole.value = hodnota;
+}
+// identita: podepsaný token serveru, ať má každý vlastní otisk (limity a jádra na uživatele,
+// ne na sdílené nastavení jen s HellSpy). Server vrátí stávající, nebo vydá nový; prázdné = vypnuto.
+form.elements["id"].value = "__ID__";
+if (form.elements["id"].value) $("identita-pozn").hidden = false;
+// --- identita: bez stávající si vyžádáme novou za důkaz práce (SHA-256 s nulami na začátku).
+// Počítá se na pozadí ve workeru, zatím jde vyrobit adresa bez identity (sdílené limity).
+(async function () {
+  if (form.elements["id"].value) return;
+  let vyzva, bity;
+  try {
+    const r = await fetch(ZAKLAD + "/identita/vyzva", { cache: "no-store" });
+    ({ vyzva, bity } = await r.json());
+  } catch (e) { return; }
+  if (!vyzva) return;
+  nastavStav("Připravuji tvoji identitu… (pár sekund, adresa jde použít i bez ní)");
+  const kod = `
+    const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+    const W=new Int32Array(64);
+    function h0(b){ // vrací prvních 32 bitů SHA-256 zprávy b (Uint8Array, < 56 bajtů/blok zvládne víc bloků)
+      const l=b.length, n=((l+9+63)>>6)<<6, m=new Uint8Array(n); m.set(b); m[l]=0x80;
+      const bits=l*8; m[n-4]=(bits>>>24)&255; m[n-3]=(bits>>>16)&255; m[n-2]=(bits>>>8)&255; m[n-1]=bits&255;
+      let a=0x6a09e667,B=0xbb67ae85,c=0x3c6ef372,d=0xa54ff53a,e=0x510e527f,f=0x9b05688c,g=0x1f83d9ab,h=0x5be0cd19;
+      for(let o=0;o<n;o+=64){
+        for(let i=0;i<16;i++)W[i]=(m[o+i*4]<<24)|(m[o+i*4+1]<<16)|(m[o+i*4+2]<<8)|m[o+i*4+3];
+        for(let i=16;i<64;i++){const x=W[i-15],y=W[i-2];
+          W[i]=(W[i-16]+(((x>>>7)|(x<<25))^((x>>>18)|(x<<14))^(x>>>3))+W[i-7]+(((y>>>17)|(y<<15))^((y>>>19)|(y<<13))^(y>>>10)))|0;}
+        let A=a,Bb=B,C=c,D=d,E=e,F=f,G=g,H=h;
+        for(let i=0;i<64;i++){
+          const t1=(H+(((E>>>6)|(E<<26))^((E>>>11)|(E<<21))^((E>>>25)|(E<<7)))+((E&F)^(~E&G))+K[i]+W[i])|0;
+          const t2=((((A>>>2)|(A<<30))^((A>>>13)|(A<<19))^((A>>>22)|(A<<10)))+((A&Bb)^(A&C)^(Bb&C)))|0;
+          H=G;G=F;F=E;E=(D+t1)|0;D=C;C=Bb;Bb=A;A=(t1+t2)|0;}
+        a=(a+A)|0;B=(B+Bb)|0;c=(c+C)|0;d=(d+D)|0;e=(e+E)|0;f=(f+F)|0;g=(g+G)|0;h=(h+H)|0;}
+      return a>>>0;}
+    onmessage=(ev)=>{const {vyzva,bity}=ev.data, enc=new TextEncoder(), pre=enc.encode(vyzva+".");
+      for(let n=0;;n++){const s=String(n), b=new Uint8Array(pre.length+s.length); b.set(pre); b.set(enc.encode(s),pre.length);
+        if(bity===0||(h0(b)>>>(32-bity))===0){postMessage(s);return;}}};`;
+  const w = new Worker(URL.createObjectURL(new Blob([kod], { type: "text/javascript" })));
+  w.onmessage = async (ev) => {
+    w.terminate();
+    try {
+      const r = await fetch(ZAKLAD + "/identita?vyzva=" + encodeURIComponent(vyzva) + "&reseni=" + encodeURIComponent(ev.data), { cache: "no-store" });
+      const d = await r.json();
+      if (d.id) { form.elements["id"].value = d.id; $("identita-pozn").hidden = false; prekresli(); }
+    } catch (e) { /* bez identity to jde taky */ }
+    nastavStav("");
+  };
+  w.onerror = () => { w.terminate(); nastavStav(""); };
+  w.postMessage({ vyzva, bity });
+})();
+
+if (Object.keys(soucasne).length === 0) {
+  form.elements["hs_enabled"].checked = true;   // HellSpy nic nestojí
+}
+
+// --- katalogy: zaškrtávátka bez jména, do adresy jde jen skryté pole „katalogy“ ---
+const KATALOGY = __KATALOGY__;
+(function () {
+  const obal = $("katalogy"), skryte = form.elements["katalogy"];
+  if (!KATALOGY.length) { $("karta-katalogy").hidden = true; return; }
+  const zvolene = new Set(String(skryte.value || "").split(",").filter(Boolean));
+  for (const k of KATALOGY) {
+    const label = document.createElement("label");
+    label.className = "prepinac";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = k.klic;
+    box.checked = zvolene.has(k.klic);
+    const span = document.createElement("span");
+    const nazev = document.createElement("strong");
+    nazev.textContent = k.nazev;
+    span.appendChild(nazev);
+    label.append(box, span);
+    obal.appendChild(label);
+    box.addEventListener("change", () => {
+      skryte.value = [...obal.querySelectorAll("input:checked")].map((b) => b.value).join(",");
+      prekresli();
+    });
+  }
+})();
+
+// --- vlastní katalogy: editor bez jmen polí, do adresy jde jen skryté pole „vk“ (JSON) ---
+(function () {
+  const T = {"odebrat": "Odebrat", "nazev": "Název", "typ": "Druh", "filmy": "Filmy", "serialy": "Seriály", "zanry": "Žánry (nic = všechny)", "jeden": "Stačí jeden z vybraných žánrů", "jazyk": "Původní jazyk", "od": "Od roku", "do_": "Do roku", "razeni": "Řadit podle", "vlastni": "Vlastní katalog", "jazyky": [["", "Jakýkoli"], ["cs", "Čeština"], ["sk", "Slovenština"], ["cs|sk", "Čeština nebo slovenština"], ["en", "Angličtina"], ["de", "Němčina"], ["fr", "Francouzština"], ["es", "Španělština"], ["it", "Italština"], ["pl", "Polština"], ["hu", "Maďarština"], ["ko", "Korejština"], ["ja", "Japonština"]], "pohadky": "Pohádky", "razeni_v": [["popularity.desc", "Oblíbenosti"], ["vote_average.desc", "Hodnocení"], ["primary_release_date.desc", "Data vydání"]], "zanry_v": {"movie": [[28, "Akční"], [12, "Dobrodružný"], [16, "Animovaný"], [35, "Komedie"], [80, "Krimi"], [99, "Dokumentární"], [18, "Drama"], [10751, "Rodinný"], [14, "Fantasy"], [36, "Historický"], [27, "Horor"], [10402, "Hudební"], [9648, "Mysteriózní"], [10749, "Romantický"], [878, "Sci-fi"], [53, "Thriller"], [10752, "Válečný"], [37, "Western"]], "series": [[10759, "Akční a dobrodružný"], [16, "Animovaný"], [35, "Komedie"], [80, "Krimi"], [99, "Dokumentární"], [18, "Drama"], [10751, "Rodinný"], [10762, "Pro děti"], [9648, "Mysteriózní"], [10764, "Reality"], [10765, "Sci-fi a fantasy"], [10768, "Válečný a politický"], [37, "Western"]]}};
+  const MAX = 5, obal = $("vk"), skryte = form.elements["vk"], pridat = $("vk-pridat");
+  let seznam = [], hotovo = false;   // prekresli() před koncem skriptu sahá na ještě nedefinované `adresa`
+  try { seznam = JSON.parse(skryte.value || "[]"); } catch (e) { seznam = []; }
+  if (!Array.isArray(seznam)) seznam = [];
+  const el = (tag, vlastnosti = {}, ...deti) => { const e = Object.assign(document.createElement(tag), vlastnosti); e.append(...deti); return e; };
+  const vyber = (moznosti, hodnota) => { const s = el("select"); for (const [v, n] of moznosti) s.append(el("option", {value: v, textContent: n})); s.value = hodnota || moznosti[0][0]; return s; };
+  const pole = (popisek, vstup) => el("label", {className: "pole"}, el("span", {textContent: popisek}), vstup);
+  function nazevAuto(c) {
+    const zanry = Object.fromEntries(T.zanry_v[c.t]);
+    const casti = (c.k || []).map(() => T.pohadky).concat((c.g || []).map((g) => zanry[g]).filter(Boolean));
+    const jazyk = (T.jazyky.find(([v]) => v && v === c.l) || [])[1];
+    return (casti.join(", ") || T.vlastni) + (jazyk ? " (" + jazyk + ")" : "");
+  }
+  function uloz() {
+    const cista = seznam.map((c) => ({...c, n: (c.n || "").trim() || nazevAuto(c)}));
+    skryte.value = cista.length ? JSON.stringify(cista) : "";
+    pridat.hidden = seznam.length >= MAX;
+    if (hotovo) prekresli();
+  }
+  function vykresli() {
+    obal.replaceChildren();
+    seznam.forEach((c, i) => {
+      c.t = c.t === "series" ? "series" : "movie";
+      const nazev = el("input", {type: "text", maxLength: 40, value: c.n || "", placeholder: nazevAuto(c)});
+      nazev.addEventListener("input", () => { c.n = nazev.value; uloz(); });
+      const typ = vyber([["movie", T.filmy], ["series", T.serialy]], c.t);
+      typ.addEventListener("change", () => { c.t = typ.value; c.g = []; vykresli(); });
+      const zanry = el("div", {className: "vk-zanry"});
+      const volby = T.zanry_v[c.t].map(([id, n]) => ["g", id, n]).concat([["k", "fairy", T.pohadky]]);
+      for (const [druh, id, n] of volby) {
+        const box = el("input", {type: "checkbox", checked: (c[druh] || []).includes(id)});
+        box.addEventListener("change", () => {
+          c[druh] = (c[druh] || []).filter((x) => x !== id).concat(box.checked ? [id] : []);
+          nazev.placeholder = nazevAuto(c); jeden.hidden = (c.g || []).length < 2; uloz();
+        });
+        zanry.append(el("label", {}, box, n));
+      }
+      const jedenBox = el("input", {type: "checkbox", checked: c.j === "or"});
+      jedenBox.addEventListener("change", () => { c.j = jedenBox.checked ? "or" : "and"; uloz(); });
+      const jeden = el("label", {className: "prepinac", hidden: (c.g || []).length < 2}, jedenBox, el("span", {}, el("strong", {textContent: T.jeden})));
+      const jazyk = vyber(T.jazyky, c.l || "");
+      jazyk.addEventListener("change", () => { c.l = jazyk.value; nazev.placeholder = nazevAuto(c); uloz(); });
+      const rok = (klic) => {
+        const v = el("input", {type: "number", min: 1900, max: 2099, step: 1, inputMode: "numeric", value: c[klic] || ""});
+        v.addEventListener("input", () => { c[klic] = /^(19|20)\d\d$/.test(v.value) ? v.value : ""; uloz(); });
+        return v;
+      };
+      const razeni = vyber(T.razeni_v, c.s);
+      razeni.addEventListener("change", () => { c.s = razeni.value; uloz(); });
+      c.s = razeni.value;
+      const odebrat = el("button", {type: "button", className: "male", textContent: T.odebrat});
+      odebrat.addEventListener("click", () => { seznam.splice(i, 1); vykresli(); });
+      obal.append(el("div", {className: "vk-kat"},
+        el("div", {className: "dvojice"}, pole(T.nazev, nazev), pole(T.typ, typ)),
+        el("span", {className: "drobne", textContent: T.zanry, style: "display:block;margin:0 0 .35rem"}), zanry, jeden,
+        el("div", {className: "dvojice"}, pole(T.jazyk, jazyk), pole(T.razeni, razeni)),
+        el("div", {className: "dvojice"}, pole(T.od, rok("od")), pole(T.do_, rok("do"))),
+        odebrat));
+    });
+    uloz();
+  }
+  pridat.addEventListener("click", () => { if (seznam.length < MAX) { seznam.push({t: "movie", g: [], k: [], j: "and", s: "popularity.desc"}); vykresli(); } });
+  vykresli();
+  hotovo = true;
+})();
+
+function nastaveni() {
+  const out = {};
+  for (const pole of form.elements) {
+    if (!pole.name) continue;
+    // checkbox jde do adresy vždy — odškrtnutý dřív chyběl a server dosadil výchozí „zapnuto“,
+    // takže HellSpy šel zapnout, ale ne vypnout (2026-09-14)
+    if (pole.type === "checkbox") out[pole.name] = pole.checked;
+    else if (String(pole.value).trim()) out[pole.name] = String(pole.value).trim();
+  }
+  return out;
+}
+
+// musí dát tentýž výsledek jako config.encode() na serveru: seřazené klíče, base64url bez zarovnání
+function zakoduj(objekt) {
+  const serazene = {};
+  for (const klic of Object.keys(objekt).sort()) serazene[klic] = objekt[klic];
+  const bajty = new TextEncoder().encode(JSON.stringify(serazene));
+  let binarne = "";
+  for (const b of bajty) binarne += String.fromCharCode(b);
+  return btoa(binarne).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+const kousek = () => zakoduj(nastaveni());
+const adresa = () => ZAKLAD_DOPLNKU + "/c/" + kousek() + "/manifest.json";
+
+// --- souhrn a kontrola úplnosti ---
+function zdroje(n = nastaveni()) {
+  const out = [];
+  const uloziste = [1, 2, 3].filter((i) => n["dav" + i + "_url"]);
+  if (uloziste.length) out.push(uloziste.length === 1 ? "vlastní úložiště" : uloziste.length + " vlastní úložiště");
+  if (n.ws_username) out.push("WebShare");
+  if (n.streamuj_username) out.push("Sosáč");
+  if (n.st_email) out.push("Sledujteto");
+  if (n.fs_username) out.push("FastShare");
+  if (n.pt_email) out.push("Přehraj.to");
+  if (n.cz) out.push("CZtor");
+  if (n.hs_enabled) out.push("HellSpy");
+  return out;
+}
+
+function problem(n = nastaveni()) {
+  if (!zdroje(n).length) return "Vyber aspoň jeden zdroj – bez něj doplněk nic nenajde.";
+  if (n.ws_username && !n.ws_password) return "U WebShare chybí heslo.";
+  if (!n.ws_username && n.ws_password) return "U WebShare chybí uživatelské jméno.";
+  if (n.streamuj_username && !n.streamuj_password) return "U Streamuj.tv chybí heslo.";
+  if (!n.streamuj_username && n.streamuj_password) return "U Streamuj.tv chybí uživatelské jméno.";
+  if (n.st_email && !n.st_password) return "U Sledujteto chybí heslo.";
+  if (!n.st_email && n.st_password) return "U Sledujteto chybí e-mail.";
+  if (n.fs_username && !n.fs_password) return "U FastShare chybí heslo.";
+  if (!n.fs_username && n.fs_password) return "U FastShare chybí uživatelské jméno.";
+  if (n.pt_email && !n.pt_password) return "U Přehraj.to chybí heslo.";
+  if (!n.pt_email && n.pt_password) return "U Přehraj.to chybí e-mail.";
+  for (const i of [1, 2, 3]) {
+    const url = n["dav" + i + "_url"];
+    if (!url && (n["dav" + i + "_username"] || n["dav" + i + "_password"])) return "U úložiště " + i + " chybí adresa.";
+    if (url && !/^(https?|davs?):\/\/[^\/]+/i.test(url)) return "Adresa úložiště " + i + " má začínat https://, http:// nebo davs://.";
+  }
+  return "";
+}
+
+function prekresli() {
+  // `souhlas` je const deklarovaná níž ve skriptu — dřívější volání (viz níže) by na ni
+  // narazily v TDZ, proto se stav čte přímo z DOM, ne přes proměnnou.
+  const ma_souhlas = document.getElementById("souhlas-podminky")?.checked;
+  $("adresa").textContent = ma_souhlas ? adresa() : "";
+  const z = zdroje();
+  $("souhrn-zdroju").textContent = z.length ? "Zdroje: " + z.join(", ") : "Zatím žádný zdroj";
+}
+
+function nastavStav(text, chyba = false) {
+  $("stav").textContent = text;
+  $("stav").classList.toggle("chyba", chyba);
+}
+
+let posledniOvereni = "";
+form.addEventListener("input", (e) => {
+  prekresli();
+  nastavStav("");
+  if (["ws_username", "ws_password"].includes(e.target.name)) vysledek("ws", "", "");
+  if (["streamuj_username", "streamuj_password"].includes(e.target.name)) vysledek("su", "", "");
+  if (["st_email", "st_password"].includes(e.target.name)) vysledek("st", "", "");
+  if (["fs_username", "fs_password", "fs_provider"].includes(e.target.name)) vysledek("fs", "", "");
+  if (["pt_email", "pt_password"].includes(e.target.name)) vysledek("pt", "", "");
+  if (/^dav\d_/.test(e.target.name || "")) vysledek("dav", "", "");
+});
+prekresli();
+
+// --- ukázat / skrýt heslo ---
+for (const tl of document.querySelectorAll("button.ukazat")) {
+  tl.addEventListener("click", () => {
+    const pole = tl.previousElementSibling;
+    const ukazat = pole.type === "password";
+    pole.type = ukazat ? "text" : "password";
+    tl.textContent = ukazat ? "skrýt" : "ukázat";
+  });
+}
+
+// --- ověření účtů ---
+function vysledek(kde, trida, text) {
+  const el = $("vysledek-" + kde);
+  el.className = "vysledek" + (trida ? " " + trida : "");
+  el.textContent = text;
+}
+
+function dny(n) { return n === 1 ? "den" : n >= 2 && n <= 4 ? "dny" : "dní"; }
+
+async function overit() {
+  const res = await fetch(ZAKLAD + "/c/" + kousek() + "/check", { cache: "no-store" });
+  if (!res.ok) throw new Error("server odpověděl " + res.status);
+  return res.json();
+}
+
+$("overit-ws").addEventListener("click", async () => {
+  const n = nastaveni();
+  if (!n.ws_username || !n.ws_password) {
+    vysledek("ws", "pozor", "Vyplň jméno i heslo.");
+    return;
+  }
+  const tl = $("overit-ws");
+  tl.disabled = true;
+  vysledek("ws", "info", "Přihlašuji se na WebShare…");
+  try {
+    const data = await overit();
+    const ws = data.webshare;
+    if (!ws) vysledek("ws", "pozor", "Účet není vyplněný.");
+    else if (!ws.ok) vysledek("ws", "chyba", "Přihlášení neprošlo – zkontroluj jméno a heslo.");
+    else if (ws.vip) vysledek("ws", "ok", `✓ Přihlášeno · VIP ještě ${ws.days} ${dny(ws.days)}`);
+    else vysledek("ws", "pozor", "Přihlášeno, ale bez VIP – přehrávání bude pomalé.");
+  } catch (err) {
+    vysledek("ws", "chyba", "Ověření se nepovedlo (" + err.message + "). Zkus to za chvíli.");
+  } finally {
+    tl.disabled = false;
+  }
+});
+
+$("overit-st").addEventListener("click", async () => {
+  const n = nastaveni();
+  if (!n.st_email || !n.st_password) {
+    vysledek("st", "pozor", "Vyplň e-mail i heslo.");
+    return;
+  }
+  const tl = $("overit-st");
+  tl.disabled = true;
+  vysledek("st", "info", "Přihlašuji se na Sledujteto…");
+  try {
+    const st = (await overit()).sledujteto;
+    if (!st) vysledek("st", "pozor", "Účet není vyplněný.");
+    else if (!st.ok) vysledek("st", "chyba", "Přihlášení neprošlo – zkontroluj e-mail a heslo.");
+    else if (st.premium) vysledek("st", "ok", "✓ Přihlášeno · Premium aktivní");
+    else vysledek("st", "pozor", "Přihlášeno, ale bez Premium – streamy se ukážou, přehrát nepůjdou.");
+  } catch (err) {
+    vysledek("st", "chyba", "Ověření se nepovedlo (" + err.message + "). Zkus to za chvíli.");
+  } finally {
+    tl.disabled = false;
+  }
+});
+
+$("overit-fs").addEventListener("click", async () => {
+  const n = nastaveni();
+  if (!n.fs_username || !n.fs_password) {
+    vysledek("fs", "pozor", "Vyplň jméno i heslo.");
+    return;
+  }
+  const tl = $("overit-fs");
+  tl.disabled = true;
+  vysledek("fs", "info", "Přihlašuji se na FastShare…");
+  try {
+    const fs = (await overit()).fastshare;
+    if (!fs) vysledek("fs", "pozor", "Účet není vyplněný.");
+    else if (!fs.ok) vysledek("fs", "chyba", "Přihlášení neprošlo – zkontroluj jméno a heslo.");
+    else if (fs.neomezene) vysledek("fs", "ok", "✓ Přihlášeno · neomezené stahování");
+    else if (fs.kredit_mb > 0) vysledek("fs", "ok", "✓ Přihlášeno · kredit " + (fs.kredit_mb / 1024).toFixed(1) + " GB");
+    else vysledek("fs", "pozor", "Přihlášeno, ale bez kreditu – streamy se ukážou, přehrát nepůjdou.");
+  } catch (err) {
+    vysledek("fs", "chyba", "Ověření se nepovedlo (" + err.message + "). Zkus to za chvíli.");
+  } finally {
+    tl.disabled = false;
+  }
+});
+
+$("overit-pt").addEventListener("click", async () => {
+  const n = nastaveni();
+  if (!n.pt_email || !n.pt_password) {
+    vysledek("pt", "pozor", "Vyplň e-mail i heslo.");
+    return;
+  }
+  const tl = $("overit-pt");
+  tl.disabled = true;
+  vysledek("pt", "info", "Přihlašuji se na Přehraj.to…");
+  try {
+    const pt = (await overit()).prehrajto;
+    if (!pt) vysledek("pt", "pozor", "Účet není vyplněný.");
+    else if (!pt.ok) vysledek("pt", "chyba", "Přihlášení neprošlo – zkontroluj e-mail a heslo.");
+    else if (pt.premium) vysledek("pt", "ok", "✓ Přihlášeno · Premium ještě " + pt.days + " " + dny(pt.days));
+    else vysledek("pt", "ok", "✓ Přihlášeno · bez Premium (přehraje se překódovaná verze v 1080p)");
+  } catch (err) {
+    vysledek("pt", "chyba", "Ověření se nepovedlo (" + err.message + "). Zkus to za chvíli.");
+  } finally {
+    tl.disabled = false;
+  }
+});
+
+$("overit-dav").addEventListener("click", async () => {
+  const n = nastaveni();
+  if (![1, 2, 3].some((i) => n["dav" + i + "_url"])) {
+    vysledek("dav", "pozor", "Vyplň adresu aspoň jednoho úložiště.");
+    return;
+  }
+  const tl = $("overit-dav");
+  tl.disabled = true;
+  vysledek("dav", "info", "Zkouším se připojit…");
+  try {
+    const seznam = (await overit()).uloziste || [];
+    const radky = seznam.map((u) => {
+      const jmeno = n["dav" + u.slot + "_name"] || "Úložiště " + u.slot;
+      return u.ok ? `✓ ${jmeno}: ${u.polozek} položek v kořeni` : `✗ ${jmeno}: ${u.chyba}`;
+    });
+    const vse = seznam.length && seznam.every((u) => u.ok);
+    vysledek("dav", vse ? "ok" : "chyba", radky.join(" · ") || "Úložiště z internetu nejde ověřit – adresa míří na server samotný.");
+  } catch (err) {
+    vysledek("dav", "chyba", "Ověření se nepovedlo (" + err.message + "). Zkus to za chvíli.");
+  } finally {
+    tl.disabled = false;
+  }
+});
+
+$("overit-su").addEventListener("click", () => {
+  const n = nastaveni();
+  if (!n.streamuj_username && !n.streamuj_password) vysledek("su", "info", "Nevyplněno – Sosáč se vynechá.");
+  else if (!n.streamuj_username || !n.streamuj_password) vysledek("su", "pozor", "Vyplň jméno i heslo.");
+  else vysledek("su", "info", "Vyplněno. Streamuj neumí heslo ověřit dopředu, pozná se to při prvním přehrání.");
+});
+
+// --- CZtor: párování PINem. Do adresy jde jen klíč `cz`, tokeny drží server zapečetěné tímhle klíčem ---
+const CZ = {"zadam": "Žádám CZtor o PIN…", "jdi": "Otevři ", "zadej": " a zadej PIN ", "cekam": " · čekám na potvrzení…", "ok": "✓ Spárováno", "do_": " do ", "bez": "Spárováno, ale bez aktivního předplatného – streamy se neukážou.", "znovu": " Adresa doplňku se změnila, nainstaluj ho znovu tlačítkem dole.", "vyprsel": "PIN vypršel, zkus to znovu.", "nepovedlo": "Párování se nepovedlo (", "overuji": "Ověřuji účet CZtor…", "nesparovano": "Nespárováno.", "zruseno": "Párování zrušeno. Zařízení „Nokturno Stremio“ odeber i na cztor.com v seznamu zařízení.", "overeni": "Ověření se nepovedlo (", "pozdeji": "). Zkus to za chvíli."};
+function czTlacitka() {
+  const sparovano = !!form.elements["cz"].value;
+  $("parovat-cz").hidden = sparovano;
+  $("overit-cz").hidden = !sparovano;
+  $("zrusit-cz").hidden = !sparovano;
+}
+czTlacitka();
+function czUcet(u) {
+  if (!u || u.active === false) return ["pozor", CZ.bez];
+  return ["ok", CZ.ok + (u.plan ? " · " + u.plan : "") + (u.valid_until ? CZ.do_ + u.valid_until : "")];
+}
+async function czJson(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error((await res.text()) || res.status);
+  return res.json();
+}
+let czBeh = 0;
+$("parovat-cz").addEventListener("click", async () => {
+  const tl = $("parovat-cz"), beh = ++czBeh;
+  tl.disabled = true;
+  vysledek("cz", "info", CZ.zadam);
+  try {
+    const d = await czJson(ZAKLAD + "/cztor/pin");
+    const el = $("vysledek-cz");
+    el.className = "vysledek info";
+    el.textContent = "";
+    const odkaz = document.createElement("a");
+    odkaz.href = d.url; odkaz.target = "_blank"; odkaz.rel = "noopener"; odkaz.textContent = d.url.replace(/^https?:\/\//, "");
+    const pin = document.createElement("strong");
+    pin.textContent = d.pin;
+    el.append(CZ.jdi, odkaz, CZ.zadej, pin, CZ.cekam);
+    const konec = Date.now() + d.platnost * 1000;
+    while (beh === czBeh && Date.now() < konec) {
+      await new Promise((ok) => setTimeout(ok, d.interval * 1000));
+      const p = await czJson(ZAKLAD + "/cztor/poll?k=" + d.klic + "&t=" + encodeURIComponent(d.token));
+      if (p.stav === "chyba") throw new Error(p.zprava);
+      if (p.stav === "ok") {
+        form.elements["cz"].value = d.klic;
+        czTlacitka();
+        prekresli();
+        const [trida, text] = czUcet(p.ucet);
+        vysledek("cz", trida, text + CZ.znovu);
+        return;
+      }
+    }
+    if (beh === czBeh) vysledek("cz", "pozor", CZ.vyprsel);
+  } catch (err) {
+    vysledek("cz", "chyba", CZ.nepovedlo + err.message + ").");
+  } finally {
+    tl.disabled = false;
+  }
+});
+$("overit-cz").addEventListener("click", async () => {
+  const tl = $("overit-cz");
+  tl.disabled = true;
+  vysledek("cz", "info", CZ.overuji);
+  try {
+    const cz = (await overit()).cztor;
+    if (!cz) vysledek("cz", "pozor", CZ.nesparovano);
+    else if (!cz.ok) vysledek("cz", "chyba", cz.chyba);
+    else vysledek("cz", ...czUcet(cz));
+  } catch (err) {
+    vysledek("cz", "chyba", CZ.overeni + err.message + CZ.pozdeji);
+  } finally {
+    tl.disabled = false;
+  }
+});
+$("zrusit-cz").addEventListener("click", () => {
+  czBeh++;
+  form.elements["cz"].value = "";
+  czTlacitka();
+  prekresli();
+  vysledek("cz", "info", CZ.zruseno);
+});
+
+// --- souhlas s podmínkami: dokud není zaškrtnutý, tlačítka pro adresu jsou disabled.
+// Editace stávající adresy (formulář předvyplněný ze `soucasne`) má souhlas rovnou
+// zaškrtnutý — na tuhle stránku se dostane, jen kdo si adresu už dřív vyrobil. ---
+const souhlas = $("souhlas-podminky");
+if (Object.keys(soucasne).length > 0) souhlas.checked = true;
+// Tlačítka nejsou `disabled`: na zakázané tlačítko prohlížeč klik vůbec nepošle a nešlo by
+// připomenout, co chybí. Posluchač je zaregistrovaný dřív než instalace, takže ji zastaví.
+const bezSouhlasu = () => {
+  for (const id of ["instalovat", "nuvio", "kopirovat"]) $(id).classList.toggle("bez-souhlasu", !souhlas.checked);
+};
+const pripomen = (e) => {
+  if (souhlas.checked) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  nastavStav("Nejdřív zaškrtni souhlas s podmínkami použití.", true);
+  const l = document.querySelector('label[for="souhlas-podminky"]');
+  l.classList.remove("pripomenout"); void l.offsetWidth; l.classList.add("pripomenout");
+  souhlas.focus({ preventScroll: true });
+};
+for (const id of ["instalovat", "nuvio", "kopirovat"]) $(id).addEventListener("click", pripomen);
+document.querySelector("details.adresa > summary").addEventListener("click", pripomen);
+bezSouhlasu();
+souhlas.addEventListener("change", () => {
+  bezSouhlasu();
+  if (souhlas.checked) { document.querySelector('label[for="souhlas-podminky"]').classList.remove("pripomenout"); nastavStav(""); }
+  prekresli();   // adresa v "Zobrazit adresu doplňku" se bez souhlasu neukazuje ani tady
+});
+prekresli();   // souhlas u editace je zaškrtnutý od začátku — adresa se má ukázat hned
+
+// --- instalace ---
+$("instalovat").addEventListener("click", () => {
+  const chyba = problem();
+  if (chyba) { nastavStav(chyba, true); return; }
+  nastavStav("Otevírám Stremio… Když se nic nestane, použij Zkopírovat adresu.");
+  window.location.href = adresa().replace(/^https?:\/\//, "stremio://");
+});
+
+// Nuvio (mobil i TV) má vlastní schéma nuvio://adresa — stremio:// umí taky, ale to by
+// se při nainstalovaném Stremiu otevřelo tam
+$("nuvio").addEventListener("click", () => {
+  const chyba = problem();
+  if (chyba) { nastavStav(chyba, true); return; }
+  nastavStav("Otevírám Nuvio… Když se nic nestane, použij Zkopírovat adresu.");
+  window.location.href = adresa().replace(/^https?:\/\//, "nuvio://");
+});
+
+$("kopirovat").addEventListener("click", async () => {
+  const chyba = problem();
+  if (chyba) { nastavStav(chyba, true); return; }
+  try {
+    await navigator.clipboard.writeText(adresa());
+    nastavStav("Adresa zkopírována. Vlož ji v aplikaci mezi doplňky (Stremio: Doplňky → pole nahoře → Instalovat).");
+  } catch {
+    document.querySelector("details.adresa").open = true;
+    nastavStav("Kopírování prohlížeč nedovolil – adresu označ a zkopíruj ručně z rámečku.", true);
+  }
+});
+</script>
+<script>
+(() => {
+  const tl = document.getElementById("tema"); if (!tl) return;
+  const root = document.documentElement, sk = root.lang === "sk";
+  const ted = () => root.dataset.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  const kresli = () => {
+    const svetly = ted() === "light";
+    tl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + (svetly ? '<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>' : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>') + '</svg>';
+    tl.title = svetly ? (sk ? "Tmavý vzhľad" : "Tmavý vzhled") : (sk ? "Svetlý vzhľad" : "Světlý vzhled");
+    tl.setAttribute("aria-label", tl.title);
+  };
+  tl.addEventListener("click", () => {
+    root.dataset.theme = ted() === "light" ? "dark" : "light";
+    try { localStorage.setItem("nokturno-tema", root.dataset.theme); } catch {}
+    kresli();
+  });
+  matchMedia("(prefers-color-scheme: light)").addEventListener("change", kresli);
+  kresli();
+})();
+</script>
+</body>
+</html>

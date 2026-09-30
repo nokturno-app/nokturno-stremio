@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import shutil
+import ssl
 import sys
 import threading
 import time
@@ -294,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
             self._posli(self.server.router.route(self.path, self._zaklad(), verejny=verejny, jazyk=jazyk,
                                                  klient=self._klient(), aplikace=aplikace,
                                                  z_proxy=soukroma.z_proxy(self.headers)))
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, ssl.SSLError):
             # přehrávač si to rozmyslel a zavřel spojení — běžné, ne chyba
             _LOGGER.debug("klient zavřel spojení při %s", bezpecna_cesta(self.path))
         except Exception:  # noqa: BLE001 – žádná chyba nesmí ukončit službu
@@ -325,7 +326,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             telo = self.rfile.read(delka).decode("utf-8", "replace")
             self._posli(self.server.router.post(self.path, telo, self.headers))
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, ssl.SSLError):
             pass
         except Exception:  # noqa: BLE001 – žádná chyba nesmí ukončit službu
             _LOGGER.exception("neočekávaná chyba při POST %s", bezpecna_cesta(self.path))

@@ -773,7 +773,8 @@
 
 <script>
 const ZAKLAD = "__ZAKLAD__";
-const ZAKLAD_DOPLNKU = "__ZAKLAD_DOPLNKU__";
+// Na počítači Stremio bere http z 127.0.0.1; HTTPS přes local-ip.co selže, když DNS blokuje rebinding. Android potřebuje HTTPS.
+const ZAKLAD_DOPLNKU = (!/Android/i.test(navigator.userAgent) && /^http:\/\/(127\.0\.0\.1|localhost)[:\/]/.test(ZAKLAD)) ? ZAKLAD : "__ZAKLAD_DOPLNKU__";
 const form = document.getElementById("form");
 const $ = (id) => document.getElementById(id);
 

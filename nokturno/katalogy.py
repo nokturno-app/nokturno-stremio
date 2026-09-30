@@ -104,6 +104,7 @@ def nahled(typ, meta):
     return out
 
 
+TMDB_DASH = {"popular": "popularity.desc", "top_rated": "vote_average.desc"}   # katalogy TMDB přes dashboard
 DASH = "dash."   # klíč katalogu z dashboardu: `dash.<slug>`
 VK = "vk."       # vlastní katalog: `vk.<pořadí>`
 STRANKA_VK = 100
@@ -133,8 +134,9 @@ class Katalogy:
         self.dash = dash   # DashApi, None = katalogy z dashboardu se nenabízejí
 
     def dostupne(self):
+        # TMDB bez vlastního klíče: tituly skládá dashboard (`DashApi.discover`)
         return [radek for radek in SEZNAM
-                if (radek[2] != "tmdb" or self.tmdb is not None)]
+                if radek[2] != "tmdb" or self.tmdb is not None or (self.dash is not None and radek[3] in TMDB_DASH)]
 
     def formular(self, jazyk="cs"):
         """Nabídka pro formulář — jen doporučené katalogy (`DOPORUCENE`), které tahle
@@ -162,7 +164,9 @@ class Katalogy:
 
     def _vlastni_polozky(self, typ, cat, skip):
         """Náhledy `skip`–`skip+100` vlastního katalogu; stránky dashboardu souběžně."""
-        params = config.vk_parametry(cat)
+        return self._discover_polozky(typ, config.vk_parametry(cat), skip)
+
+    def _discover_polozky(self, typ, params, skip):
         prvni, stran = self.dash.discover(typ, params, page=1)
         if prvni is None:
             return []
@@ -227,6 +231,8 @@ class Katalogy:
                 # vlastní žebříček dashboardu — nejvýš 50 položek, `TrendApi.catalog()`
                 # sám vrátí prázdno pro skip > 0 (stránkování nemá co nabídnout)
                 raw = self.trend.catalog(typ, cid, skip=skip)
+            elif self.tmdb is None:
+                return self._discover_polozky(typ, {"sort_by": TMDB_DASH[cid]}, skip)
             else:
                 raw = self.tmdb.catalog(typ, cid, skip=skip)
             return [p for p in (nahled(typ, m) for m in raw or []) if p]

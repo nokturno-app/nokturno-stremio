@@ -71,6 +71,12 @@
     <button class="tl" id="baterie" hidden>Vypnout úspory baterie pro Nokturno</button>
   </div>
 
+  <div class="karta" id="aktualizace">
+    <h2>Aktualizace aplikace</h2>
+    <p id="akt-text">Zjišťuju nejnovější verzi…</p>
+    <button class="tl hlavni" id="akt-tl" hidden>Stáhnout nejnovější verzi</button>
+  </div>
+
   <div class="pata" id="pata">Běží na pozadí i po zavření aplikace.</div>
 </main>
 <script>
@@ -97,6 +103,27 @@ if (ip) {
 }
 document.getElementById("nastavit").addEventListener("click", () => Nokturno.otevri(MISTNI));
 if (verze) document.getElementById("pata").textContent += " · verze " + verze;
+
+const REPO = "https://github.com/nokturno-app/nokturno-stremio-app/releases";
+const novejsi = (a, b) => {   // je verze a novější než b?
+  const x = a.split(".").map(Number), y = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); }
+  return false;
+};
+fetch("https://raw.githubusercontent.com/nokturno-app/nokturno-stremio-app/main/update.json?_=" + Date.now(), { cache: "no-store" })
+  .then((r) => r.json())
+  .then((j) => {
+    const nova = String(j.version || "").replace(/^v/, ""), text = document.getElementById("akt-text"), tl = document.getElementById("akt-tl");
+    if (!nova || !verze) { text.textContent = "Nejnovější verzi se nepodařilo zjistit."; return; }
+    if (novejsi(nova, verze)) {
+      text.textContent = "Je dostupná nová verze " + nova + " (nainstalovaná je " + verze + "). Doplněk se aktualizuje sám, aplikaci nainstaluješ stažením souboru.";
+      tl.hidden = false;
+      tl.addEventListener("click", () => Nokturno.otevri(REPO + "/download/v" + nova + "/nokturno-" + nova + ".apk"));
+    } else {
+      text.textContent = "✓ Máš nejnovější verzi (" + verze + ").";
+    }
+  })
+  .catch(() => { document.getElementById("akt-text").textContent = "Nejnovější verzi se nepodařilo zjistit (bez internetu?)."; });
 
 function baterie() {
   const ok = Nokturno.baterieVporadku();

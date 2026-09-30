@@ -67,6 +67,8 @@ public class MainActivity extends Activity {
         web.setBackgroundColor(0xFF0D0C1D);
         web.getSettings().setJavaScriptEnabled(true);
         web.addJavascriptInterface(new Most(), "Nokturno");
+        // odkaz na soubor .apk načtený přímo ve WebView (záloha, když se nepodaří prohlížeč)
+        web.setDownloadListener((u, ua, cd, mime, len) -> stahniAInstaluj(u));
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
@@ -151,7 +153,9 @@ public class MainActivity extends Activity {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return true;
-        } catch (ActivityNotFoundException e) {
+        } catch (Exception e) {   // chybějící prohlížeč i zákaz systému; důvod se ukáže uživateli
+            android.util.Log.e("Nokturno", "odkaz se neotevřel: " + url, e);
+            Toast.makeText(this, "Odkaz se neotevřel (" + e.getClass().getSimpleName() + ")", Toast.LENGTH_LONG).show();
             return false;
         }
     }
@@ -160,8 +164,18 @@ public class MainActivity extends Activity {
     private class Most {
         @JavascriptInterface
         public void otevri(String url) {
-            // TV box bez prohlížeče: formulář se otevře přímo tady
-            if (!otevriVen(url)) runOnUiThread(() -> web.loadUrl(url));
+            // z vlákna mostu se aktivita spouští na hlavním vlákně; TV box bez prohlížeče: formulář se otevře přímo tady
+            runOnUiThread(() -> {
+                if (otevriVen(url)) return;
+                if (url.endsWith(".apk")) {
+                    stahniAInstaluj(url);
+                } else {
+                    ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newPlainText("Nokturno", url));
+                    Toast.makeText(MainActivity.this, "Odkaz je ve schránce, vlož ho do prohlížeče", Toast.LENGTH_LONG).show();
+                    web.loadUrl(url);
+                }
+            });
         }
 
         @JavascriptInterface

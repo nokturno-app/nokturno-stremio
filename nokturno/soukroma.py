@@ -30,7 +30,12 @@ OTISK_RE = re.compile(r"^[0-9a-f]{16}$")
 
 
 def z_proxy(headers):
-    return bool(headers.get("Cf-Connecting-IP"))
+    """Požadavek z internetu přes Cloudflare. Výjimka: admin.* za Cloudflare Access s přihlášeným
+    uživatelem (Access hlavičku doplní až po ověření; cesty k tomuhle hostu jinak nevedou)."""
+    if not headers.get("Cf-Connecting-IP"):
+        return False
+    admin = str(headers.get("Host") or "").lower().startswith("admin.")
+    return not (admin and headers.get("Cf-Access-Authenticated-User-Email"))
 
 
 def otisk(options):

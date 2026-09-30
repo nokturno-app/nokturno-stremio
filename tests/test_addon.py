@@ -2882,9 +2882,9 @@ class TestAktualizaceZFormulare(unittest.TestCase):
         r.enginy_test.data_dir = tmp
         self.assertEqual(r.route("/aktualizace", ZAKLAD).status, 404)   # bez zavaděče nic
         r.UPDATE_URL = "https://x.cz/update.json"
-        with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(b'{"version": "9.0.10"}')):
+        with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(b'{"version": "99.0.10"}')):
             self.assertEqual(r.route("/aktualizace", ZAKLAD).data,
-                             {"verze": r.verze, "nejnovejsi": "9.0.10", "novejsi": True})
+                             {"verze": r.verze, "nejnovejsi": "99.0.10", "novejsi": True})
         self.assertEqual(r.route("/aktualizace", ZAKLAD, z_proxy=True).status, 404)
         self.assertEqual(r.post("/aktualizace", "", {}).status, 403)
         self.assertEqual(r.post("/aktualizace", "", {"X-Nokturno": "1"}).status, 200)

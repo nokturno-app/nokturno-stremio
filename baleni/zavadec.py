@@ -35,6 +35,7 @@ import sys
 import threading
 import time
 import urllib.request
+import webbrowser
 import zipfile
 
 LOG = logging.getLogger("zavadec")
@@ -365,6 +366,35 @@ def povolit(text, slozka):
     return 0
 
 
+def tray(z):
+    """Windows: bez okna konzole, ikona v oznamovací oblasti (Otevřít nastavení / Ukončit).
+    False = ikona nejde (chybí knihovna, není plocha) → běží se jako dřív."""
+    try:
+        import pystray  # noqa: PLC0415
+        from PIL import Image, ImageDraw  # noqa: PLC0415
+    except ImportError:
+        return False
+    obr = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    kresli = ImageDraw.Draw(obr)
+    kresli.ellipse((4, 4, 60, 60), fill=(92, 68, 150, 255))
+    kresli.ellipse((22, 4, 66, 56), fill=(0, 0, 0, 0))   # srpek měsíce
+    url = f"http://127.0.0.1:{z.port}/configure"
+
+    def konec(ikona, _polozka):
+        z.konec.set()
+        ikona.stop()
+
+    ikona = pystray.Icon("nokturno", obr, "Nokturno", pystray.Menu(
+        pystray.MenuItem("Otevřít nastavení", lambda *_: webbrowser.open(url), default=True),
+        pystray.MenuItem("Ukončit", konec)))
+    vlakno = threading.Thread(target=z.bez, daemon=True)
+    vlakno.start()
+    ikona.run()   # blokuje do „Ukončit“
+    z.konec.set()
+    vlakno.join(30)
+    return True
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["--sluzba"]:
@@ -378,9 +408,10 @@ def main(argv=None):
     ap.add_argument("--bez-https", action="store_true")
     ap.add_argument("--data", help="datová složka (nastavení, cache, stažené verze)")
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
     data = args.data or datova_slozka()
     os.makedirs(data, exist_ok=True)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+                        **({} if sys.stderr else {"filename": os.path.join(data, "nokturno.log"), "encoding": "utf-8"}))   # bez konzole (Windows tray)
     if args.povolit:
         return povolit(args.povolit, os.path.join(data, "cache"))
     volby = nacti_volby(data)
@@ -397,6 +428,8 @@ def main(argv=None):
     z = Zavadec(volby, data)
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, lambda *_: z.konec.set())
+    if sys.platform == "win32" and zmrazeny() and tray(z):
+        return 0
     try:
         z.bez()
     except KeyboardInterrupt:

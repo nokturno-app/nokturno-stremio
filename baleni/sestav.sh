@@ -13,5 +13,6 @@ cp -r nokturno build/app/
 find build/app -name __pycache__ -prune -exec rm -rf {} +
 echo "$VERZE" > build/app/version.txt
 # shellcheck disable=SC2046
-"$PY" -m PyInstaller --noconfirm --onefile --clean --name "nokturno-$VERZE-$PLAT" \
+EXTRA=""; case "$PLAT" in windows*) EXTRA="--noconsole --hidden-import=pystray._win32";; esac
+"$PY" -m PyInstaller --noconfirm --onefile --clean $EXTRA --name "nokturno-$VERZE-$PLAT" \
   --add-data "build/app:app" $("$PY" baleni/stdlib.py) baleni/zavadec.py

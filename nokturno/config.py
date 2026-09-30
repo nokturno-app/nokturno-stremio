@@ -56,6 +56,7 @@ PROSTREDI = {
     "NOKTURNO_PREF_SURROUND": "pref_surround",
     "NOKTURNO_HIDE_SD": "hide_sd",
     "NOKTURNO_HIDE_3D": "hide_3d",
+    "NOKTURNO_HIDE_LOWQ": "hide_lowq",
     "NOKTURNO_MAX_BITRATE": "max_bitrate_mbps",
     "NOKTURNO_SORT": "sort_streams",
     # vlastní úložiště (WebDAV), až tři — viz core/lib/storage_api.py
@@ -77,12 +78,13 @@ VK_MAX = 5
 VK_KLICOVA_SLOVA = {"fairy": "3205|329731|358931|351899"}   # pohádky: TMDB je má jen jako klíčové slovo
 VK_RAZENI = ("popularity.desc", "vote_average.desc", "primary_release_date.desc")
 # klíče, u kterých engine čeká pravdivostní hodnotu, ne řetězec
-LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d")
+LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d", "hide_lowq")
 
 VYCHOZI = {
     "sort_streams": "quality",   # ve Stremiu je vidět jen několik prvních řádků
     "pref_lang": "CZ",
     "hs_enabled": True,          # HellSpy nepotřebuje účet, není co nastavovat
+    "hide_lowq": True,           # nahrávky z kina (CAM, TS…) se skrývají, pokud je k dispozici něco lepšího
 }
 
 

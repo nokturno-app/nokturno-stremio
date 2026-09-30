@@ -552,6 +552,11 @@
             <small>Vynechá 3D verze filmů (SBS, OU, MVC), které se na běžné televizi nepřehrají správně.</small></span>
         </label>
         <label class="prepinac">
+          <input type="checkbox" name="hide_lowq">
+          <span><strong>Skrýt nahrávky z kina</strong>
+            <small>Vynechá streamy označené CAM, HDCAM, TS, telesync nebo screener. Když zatím existuje jen nahrávka z kina, zobrazí se, aby výběr nezůstal prázdný.</small></span>
+        </label>
+        <label class="prepinac">
           <input type="checkbox" name="pref_surround">
           <span><strong>Upřednostnit prostorový zvuk 5.1</strong>
             <small>Pro soundbar nebo domácí kino.</small></span>
@@ -780,6 +785,7 @@ const $ = (id) => document.getElementById(id);
 
 // --- předvyplnění: z adresy, na které formulář stojí (Konfigurovat ve Stremiu) ---
 const soucasne = __NASTAVENI__;
+form.elements["hide_lowq"].checked = true;   // výchozí zapnuto; stará adresa bez volby ji nesmí odškrtnout
 for (const [klic, hodnota] of Object.entries(soucasne)) {
   const pole = form.elements[klic];
   if (!pole || klic === "jazyk") continue;   // jazyk hlášek určuje stránka, ne stará adresa

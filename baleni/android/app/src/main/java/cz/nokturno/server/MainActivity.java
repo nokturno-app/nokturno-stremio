@@ -1,13 +1,18 @@
 package cz.nokturno.server;
 
 import android.app.Activity;
+import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
+import android.content.BroadcastReceiver;
 import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.IntentFilter;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
@@ -16,6 +21,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import java.io.File;
 import java.net.HttpURLConnection;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -26,6 +32,28 @@ import java.util.Collections;
 /** Spustí službu a ukáže adresy (assets/index.html). Nastavení je ve formuláři /configure. */
 public class MainActivity extends Activity {
     private WebView web;
+    private long stahovani = -1;
+    private final BroadcastReceiver dokonceno = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            long id = i.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -2);
+            if (id != stahovani) return;
+            DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            Uri apk = dm.getUriForDownloadedFile(id);
+            if (apk == null) {
+                Toast.makeText(MainActivity.this, "Stažení se nepovedlo", Toast.LENGTH_LONG).show();
+                return;
+            }
+            Intent inst = new Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(apk, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                startActivity(inst);
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this, "Instalace se nespustila, otevři stažený soubor v oznámení", Toast.LENGTH_LONG).show();
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle b) {
@@ -33,6 +61,8 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
         NokturnoService.spust(this);
         pozadatOBaterii(false);
+        IntentFilter f = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(dokonceno, f, Context.RECEIVER_EXPORTED); else registerReceiver(dokonceno, f);
         web = new WebView(this);
         web.setBackgroundColor(0xFF0D0C1D);
         web.getSettings().setJavaScriptEnabled(true);
@@ -59,6 +89,40 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed();
+    }
+
+    @Override
+    protected void onDestroy() {
+        try {
+            unregisterReceiver(dokonceno);
+        } catch (Exception ignored) {
+        }
+        super.onDestroy();
+    }
+
+    /** Stáhne APK a po dokončení spustí instalaci; bez povolení „instalovat neznámé aplikace" ho nejdřív vyžádá. */
+    private void stahniAInstaluj(String url) {
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            Toast.makeText(this, "Povol Nokturnu instalovat aplikace a klepni na Stáhnout znovu", Toast.LENGTH_LONG).show();
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
+            } catch (Exception ignored) {
+            }
+            return;
+        }
+        try {
+            File stary = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "nokturno-aktualizace.apk");
+            if (stary.exists()) stary.delete();
+            DownloadManager.Request r = new DownloadManager.Request(Uri.parse(url))
+                    .setTitle("Nokturno – aktualizace")
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, "nokturno-aktualizace.apk");
+            stahovani = ((DownloadManager) getSystemService(DOWNLOAD_SERVICE)).enqueue(r);
+            Toast.makeText(this, "Stahuji aktualizaci…", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Stažení se nespustilo, otevírám odkaz v prohlížeči", Toast.LENGTH_LONG).show();
+            otevriVen(url);
+        }
     }
 
     private boolean bezOmezeniBaterie() {
@@ -105,6 +169,11 @@ public class MainActivity extends Activity {
             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("Nokturno", text));
             runOnUiThread(() -> Toast.makeText(MainActivity.this, "Zkopírováno", Toast.LENGTH_SHORT).show());
+        }
+
+        @JavascriptInterface
+        public void aktualizuj(String url) {
+            runOnUiThread(() -> stahniAInstaluj(url));
         }
 
         @JavascriptInterface

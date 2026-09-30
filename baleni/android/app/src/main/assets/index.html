@@ -116,9 +116,9 @@ fetch("https://raw.githubusercontent.com/nokturno-app/nokturno-stremio-app/main/
     const nova = String(j.version || "").replace(/^v/, ""), text = document.getElementById("akt-text"), tl = document.getElementById("akt-tl");
     if (!nova || !verze) { text.textContent = "Nejnovější verzi se nepodařilo zjistit."; return; }
     if (novejsi(nova, verze)) {
-      text.textContent = "Je dostupná nová verze " + nova + " (nainstalovaná je " + verze + "). Doplněk se aktualizuje sám, aplikaci nainstaluješ stažením souboru.";
+      text.textContent = "Je dostupná nová verze " + nova + " (nainstalovaná je " + verze + "). Doplněk se aktualizuje sám, aplikaci stáhneš a nainstaluješ tlačítkem.";
       tl.hidden = false;
-      tl.addEventListener("click", () => Nokturno.otevri(REPO + "/download/v" + nova + "/nokturno-" + nova + ".apk"));
+      tl.addEventListener("click", () => Nokturno.aktualizuj(REPO + "/download/v" + nova + "/nokturno-" + nova + ".apk"));
     } else {
       text.textContent = "✓ Máš nejnovější verzi (" + verze + ").";
     }

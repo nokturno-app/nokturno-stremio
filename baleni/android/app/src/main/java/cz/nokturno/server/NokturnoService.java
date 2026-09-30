@@ -3,6 +3,7 @@ package cz.nokturno.server;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -34,8 +35,12 @@ public class NokturnoService extends Service {
         } else {
             b = new Notification.Builder(this);
         }
-        Notification n = b.setContentTitle("Nokturno běží")
-                .setContentText("Doplněk pro Stremio a Nuvio na portu 7140")
+        Intent otevrit = new Intent(this, MainActivity.class);
+        PendingIntent pi = PendingIntent.getActivity(this, 0, otevrit,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
+        Notification n = b.setContentTitle("Nokturno běží na pozadí")
+                .setContentText("Služba pro Stremio a Nuvio na portu 7140, po restartu se spustí sama")
+                .setContentIntent(pi)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setOngoing(true)
                 .build();
@@ -48,17 +53,36 @@ public class NokturnoService extends Service {
             if (vlakno == null || !vlakno.isAlive()) {
                 final String data = getFilesDir().getAbsolutePath() + "/nokturno";
                 vlakno = new Thread(() -> {
-                    try {
-                        if (!Python.isStarted()) Python.start(new AndroidPlatform(getApplicationContext()));
-                        Python.getInstance().getModule("nokturno_apk.start").callAttr("run", data);
-                    } catch (Throwable t) {
-                        Log.e("Nokturno", "doplněk skončil", t);
+                    // když doplněk skončí (chyba, vyjímka), za pár sekund se spustí znovu
+                    while (true) {
+                        try {
+                            if (!Python.isStarted()) Python.start(new AndroidPlatform(getApplicationContext()));
+                            Python.getInstance().getModule("nokturno_apk.start").callAttr("run", data);
+                        } catch (Throwable t) {
+                            Log.e("Nokturno", "doplněk skončil", t);
+                        }
+                        try {
+                            Thread.sleep(5000);
+                        } catch (InterruptedException e) {
+                            return;
+                        }
                     }
                 }, "nokturno");
                 vlakno.start();
             }
         }
         return START_STICKY;
+    }
+
+    /** Smazání aplikace z posledních aplikací službu nezastaví; kdyby ji systém přesto ukončil, naplánuje se restart. */
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        Intent i = new Intent(getApplicationContext(), NokturnoService.class);
+        PendingIntent pi = PendingIntent.getService(this, 1, i,
+                PendingIntent.FLAG_ONE_SHOT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
+        android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+        if (am != null) am.set(android.app.AlarmManager.ELAPSED_REALTIME, android.os.SystemClock.elapsedRealtime() + 2000, pi);
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override

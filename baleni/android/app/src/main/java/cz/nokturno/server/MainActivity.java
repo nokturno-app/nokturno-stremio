@@ -8,6 +8,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
@@ -30,6 +32,7 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
         NokturnoService.spust(this);
+        pozadatOBaterii(false);
         web = new WebView(this);
         web.setBackgroundColor(0xFF0D0C1D);
         web.getSettings().setJavaScriptEnabled(true);
@@ -58,6 +61,28 @@ public class MainActivity extends Activity {
         if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed();
     }
 
+    private boolean bezOmezeniBaterie() {
+        if (Build.VERSION.SDK_INT < 23) return true;
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        return pm == null || pm.isIgnoringBatteryOptimizations(getPackageName());
+    }
+
+    /** Bez výjimky z úspor baterie Android službu časem uspí; po vysvětlení v aplikaci (tlačítko) nebo hned při prvním spuštění. */
+    private void pozadatOBaterii(boolean vzdy) {
+        if (bezOmezeniBaterie()) return;
+        android.content.SharedPreferences sp = getSharedPreferences("nokturno", MODE_PRIVATE);
+        if (!vzdy && sp.getBoolean("baterie_zeptano", false)) return;
+        sp.edit().putBoolean("baterie_zeptano", true).apply();
+        try {
+            startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     private boolean otevriVen(String url) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -80,6 +105,16 @@ public class MainActivity extends Activity {
             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("Nokturno", text));
             runOnUiThread(() -> Toast.makeText(MainActivity.this, "Zkopírováno", Toast.LENGTH_SHORT).show());
+        }
+
+        @JavascriptInterface
+        public boolean baterieVporadku() {
+            return bezOmezeniBaterie();
+        }
+
+        @JavascriptInterface
+        public void povolBaterii() {
+            runOnUiThread(() -> pozadatOBaterii(true));
         }
 
         @JavascriptInterface

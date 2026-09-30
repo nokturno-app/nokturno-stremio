@@ -97,7 +97,9 @@ def _obnova(ctx, slozka):
 
 def https_zaklad(zaklad, port):
     """`http://192.168.1.10:7140` → `https://192-168-1-10.my.local-ip.co:7141`.
-    Jen pro soukromou IPv4 v síti; jinak None (adresa zůstane, jak je)."""
+    Jen pro soukromou IPv4 v síti a pro loopback (`127-0-0-1.my.local-ip.co` se přeloží na 127.0.0.1);
+    jinak None (adresa zůstane, jak je). Loopback nutně potřebuje HTTPS: Stremio i Nuvio v Androidu
+    z `stremio://`/`nuvio://` vyrobí https a na HTTP portu pak hlásí „Unable to parse TLS packet header"."""
     if not port or not zaklad.startswith("http://"):
         return None
     host = zaklad[len("http://"):].rsplit(":", 1)[0]
@@ -105,14 +107,14 @@ def https_zaklad(zaklad, port):
         ip = ipaddress.IPv4Address(host)
     except ValueError:
         return None
-    if not ip.is_private or ip.is_loopback:
+    if not (ip.is_private or ip.is_loopback):
         return None
     return f"https://{host.replace('.', '-')}.{DOMENA}:{port}"
 
 
 if __name__ == "__main__":
     assert https_zaklad("http://192.168.1.10:7140", 7141) == "https://192-168-1-10.my.local-ip.co:7141"
-    assert https_zaklad("http://127.0.0.1:7140", 7141) is None
+    assert https_zaklad("http://127.0.0.1:7140", 7141) == "https://127-0-0-1.my.local-ip.co:7141"
     assert https_zaklad("http://nokturno.stream", 7141) is None
     assert https_zaklad("https://192.168.1.10:7141", 7141) is None
     assert https_zaklad("http://192.168.1.10:7140", 0) is None

@@ -64,6 +64,13 @@
     <div class="adresa" id="sit-https"></div>
   </div>
 
+  <div class="karta" id="sluzba">
+    <h2>Služba na pozadí</h2>
+    <p>Nokturno běží na pozadí jako služba (v oznámeních „Nokturno běží na pozadí“) i po zavření aplikace a po restartu zařízení se spustí samo. Oznámení nech zapnuté, Android podle něj službu nechá běžet.</p>
+    <p id="baterie-text" style="margin:.6rem 0 .8rem"></p>
+    <button class="tl" id="baterie" hidden>Vypnout úspory baterie pro Nokturno</button>
+  </div>
+
   <div class="pata" id="pata">Běží na pozadí i po zavření aplikace.</div>
 </main>
 <script>
@@ -90,6 +97,17 @@ if (ip) {
 }
 document.getElementById("nastavit").addEventListener("click", () => Nokturno.otevri(MISTNI));
 if (verze) document.getElementById("pata").textContent += " · verze " + verze;
+
+function baterie() {
+  const ok = Nokturno.baterieVporadku();
+  document.getElementById("baterie-text").textContent = ok
+    ? "✓ Úspory baterie Nokturno neomezují."
+    : "⚠ Úspory baterie můžou službu uspat. Povol výjimku, ať běží pořád.";
+  document.getElementById("baterie").hidden = ok;
+  setTimeout(baterie, 5000);
+}
+document.getElementById("baterie").addEventListener("click", () => Nokturno.povolBaterii());
+baterie();
 
 function zkontroluj() {
   const ok = Nokturno.bezi();

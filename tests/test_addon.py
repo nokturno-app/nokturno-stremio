@@ -2773,7 +2773,7 @@ class TestHttpsVSiti(unittest.TestCase):
         from nokturno import tls
         self.assertEqual(tls.https_zaklad("http://192.168.1.10:7140", 7141),
                          "https://192-168-1-10.my.local-ip.co:7141")
-        self.assertIsNone(tls.https_zaklad("http://127.0.0.1:7140", 7141))
+        self.assertEqual(tls.https_zaklad("http://127.0.0.1:7140", 7141), "https://127-0-0-1.my.local-ip.co:7141")
         self.assertIsNone(tls.https_zaklad("https://nokturno.stream", 7141))
         self.assertIsNone(tls.https_zaklad("http://192.168.1.10:7140", 0))
 

@@ -104,7 +104,9 @@ def nahled(typ, meta):
     return out
 
 
-TMDB_DASH = {"popular": "popularity.desc", "top_rated": "vote_average.desc"}   # katalogy TMDB přes dashboard
+# katalogy TMDB přes dashboard; nejlépe hodnocené jen s dost hlasy (jinak vyhrají obskurní tituly)
+TMDB_DASH = {"popular": {"sort_by": "popularity.desc"},
+             "top_rated": {"sort_by": "vote_average.desc", "vote_count_gte": {"movie": "2000", "series": "1000"}}}
 DASH = "dash."   # klíč katalogu z dashboardu: `dash.<slug>`
 VK = "vk."       # vlastní katalog: `vk.<pořadí>`
 STRANKA_VK = 100
@@ -232,7 +234,8 @@ class Katalogy:
                 # sám vrátí prázdno pro skip > 0 (stránkování nemá co nabídnout)
                 raw = self.trend.catalog(typ, cid, skip=skip)
             elif self.tmdb is None:
-                return self._discover_polozky(typ, {"sort_by": TMDB_DASH[cid]}, skip)
+                params = {k: (v[typ] if isinstance(v, dict) else v) for k, v in TMDB_DASH[cid].items()}
+                return self._discover_polozky(typ, params, skip)
             else:
                 raw = self.tmdb.catalog(typ, cid, skip=skip)
             return [p for p in (nahled(typ, m) for m in raw or []) if p]

@@ -337,7 +337,7 @@ def manifest(verze, zdroje=(), nastaveno=True, katalogy=(), nova_adresa=None, ja
         "version": manifest_version(verze),
         "name": "Nokturno",
         "description": popis,
-        "logo": "https://raw.githubusercontent.com/nokturno-app/plugin.video.nokturno/main/resources/media/icon2.png",
+        "logo": "https://nokturno.stream/logo.png",
         "resources": ["stream", "catalog"] if katalogy else ["stream"],
         "types": ["movie", "series"],
         "catalogs": list(katalogy),

@@ -545,9 +545,9 @@ class TestBezLuny(unittest.TestCase):
         options = config.from_environ({"NOKTURNO_LUNA_URL": "http://x:7126", "NOKTURNO_LUNA_TOKEN": "e1.x"})
         self.assertNotIn("luna_url", options)
 
-    def test_logo_manifestu_existuje_v_repu_doplnku(self):
-        logo = mapping.manifest("0").get("logo", "")
-        self.assertTrue(logo.endswith("/resources/media/icon2.png"), logo)
+    def test_logo_manifestu_je_male_z_nokturno_stream(self):
+        # malé logo ze statické stránky (Dashboard/guard/web/logo.png), ne 150kB PNG z GitHubu – Nuvio ho tam nenačetlo
+        self.assertEqual(mapping.manifest("0").get("logo"), "https://nokturno.stream/logo.png")
 
 
 class TestBezKoncertu(unittest.TestCase):

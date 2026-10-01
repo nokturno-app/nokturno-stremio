@@ -42,6 +42,23 @@ import zipfile
 
 LOG = logging.getLogger("zavadec")
 
+
+def _ca_svazek():
+    """Samostatný program nese vlastní OpenSSL bez kořenových certifikátů (macOS, Linux bez
+    /etc/ssl) a každé HTTPS spojení by padalo na CERTIFICATE_VERIFY_FAILED. Přibalený certifi
+    se proto předá OpenSSL přes SSL_CERT_FILE; dědí ho i spuštěný doplněk."""
+    if not getattr(sys, "frozen", False) or os.environ.get("SSL_CERT_FILE"):
+        return
+    try:
+        import certifi
+        if os.path.exists(certifi.where()):
+            os.environ["SSL_CERT_FILE"] = certifi.where()
+    except Exception:  # noqa: BLE001 – bez certifi zůstane chování jako dřív
+        pass
+
+
+_ca_svazek()
+
 # Kam se ptát na novou verzi, když ji nastavení (`update_url`) neurčí. Veřejné repo jen s vydáními.
 VYCHOZI_UPDATE_URL = "https://raw.githubusercontent.com/nokturno-app/nokturno-stremio-app/main/update.json"
 KONTROLA_S = 6 * 3600

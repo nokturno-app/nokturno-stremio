@@ -15,4 +15,5 @@ echo "$VERZE" > build/app/version.txt
 # shellcheck disable=SC2046
 EXTRA=""; case "$PLAT" in windows*) EXTRA="--noconsole --hidden-import=pystray._win32 --hidden-import=win32timezone --hidden-import=servicemanager --hidden-import=win32serviceutil";; esac
 "$PY" -m PyInstaller --noconfirm --onefile --clean $EXTRA --name "nokturno-$VERZE-$PLAT" \
+  --hidden-import=certifi --collect-data certifi \
   --add-data "build/app:app" $("$PY" baleni/stdlib.py) baleni/zavadec.py

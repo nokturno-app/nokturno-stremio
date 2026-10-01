@@ -2997,3 +2997,34 @@ class TestServerDoStatistik(unittest.TestCase):
         self.assertRegex(a["id"], r"^[0-9a-f]{32}$")
         self.assertEqual(set(a), {"id", "run", "os", "arch", "private", "configs"})
         self.assertEqual(Statistiky("9.9").server(), {})
+
+
+class TestCaSvazek(unittest.TestCase):
+    """Samostatný program nese OpenSSL bez kořenových certifikátů (macOS ARM64)."""
+
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / "baleni"))
+        import zavadec
+        self.z = zavadec
+        self.puvodni = os.environ.pop("SSL_CERT_FILE", None)
+
+    def tearDown(self):
+        os.environ.pop("SSL_CERT_FILE", None)
+        if self.puvodni is not None:
+            os.environ["SSL_CERT_FILE"] = self.puvodni
+
+    def test_zmrazeny_program_pouzije_certifi(self):
+        import certifi
+        with mock.patch.object(sys, "frozen", True, create=True):
+            self.z._ca_svazek()
+        self.assertEqual(os.environ["SSL_CERT_FILE"], certifi.where())
+
+    def test_bez_zmrazeni_se_nic_nemeni(self):
+        self.z._ca_svazek()
+        self.assertNotIn("SSL_CERT_FILE", os.environ)
+
+    def test_vlastni_svazek_ma_prednost(self):
+        os.environ["SSL_CERT_FILE"] = "/x/ca.pem"
+        with mock.patch.object(sys, "frozen", True, create=True):
+            self.z._ca_svazek()
+        self.assertEqual(os.environ["SSL_CERT_FILE"], "/x/ca.pem")

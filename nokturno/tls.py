@@ -10,6 +10,7 @@ a pak jednou denně; nový platí pro další spojení bez restartu.
 import ipaddress
 import logging
 import os
+import socket
 import ssl
 import threading
 import time
@@ -93,6 +94,16 @@ def _obnova(ctx, slozka):
             nacti(ctx, slozka)
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("obnova certifikátu local-ip.co selhala: %s", err)
+
+
+def dns_funguje(host=None):
+    """Přeloží se `127-0-0-1.my.local-ip.co` na 127.0.0.1? Router s ochranou proti DNS rebinding
+    (a DNS filtry typu Pi-hole) odpověď s privátní adresou zahazují, Stremio pak z jiných zařízení
+    hlásí „Failed to fetch“ — formulář to hlásí uživateli, tohle je totéž do logu aplikace."""
+    try:
+        return socket.gethostbyname(host or f"127-0-0-1.{DOMENA}") == "127.0.0.1"
+    except OSError:
+        return False
 
 
 def https_zaklad(zaklad, port):

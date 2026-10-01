@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .config import decode, fingerprint, from_environ, sources_summary
 from .katalogy import Katalogy
+from .core.lib import keepalive
 from .core.lib.dash_api import DashApi
 from .identita import Identita
 from .enginy import Enginy
@@ -192,6 +193,16 @@ class Handler(BaseHTTPRequestHandler):
         ("Strict-Transport-Security", "max-age=31536000"),
     )
 
+    def _hlavicky_stranek(self):
+        """`HLAVICKY_STRANEK`; vlastní instance s HTTPS v síti navíc smí z formuláře ověřit svou
+        adresu přes local-ip.co (kontrola DNS rebinding v `configure.html`) — jen na port HTTPS."""
+        port = getattr(getattr(self.server, "router", None), "https_port", 0)
+        if not port:
+            return self.HLAVICKY_STRANEK
+        zdroj = f"connect-src 'self' https://api.github.com https://*.{tls.DOMENA}:{port};"
+        return tuple((j, h.replace("connect-src 'self' https://api.github.com;", zdroj)) if j == "Content-Security-Policy" else (j, h)
+                     for j, h in self.HLAVICKY_STRANEK)
+
     # --- měření provozu (provoz.py) ---------------------------------------
     def _zacni(self):
         self._zacatek = time.monotonic()
@@ -273,7 +284,7 @@ class Handler(BaseHTTPRequestHandler):
         self._cors()
         if odpoved.html is not None:
             self.send_header("Vary", "Accept-Language")   # stránky jsou česky nebo slovensky
-            for jmeno, hodnota in self.HLAVICKY_STRANEK:
+            for jmeno, hodnota in self._hlavicky_stranek():
                 self.send_header(jmeno, hodnota)
         if self.path.startswith("/c/"):
             # adresa nese účty — nic z ní nemá zůstat v cache prohlížeče ani proxy
@@ -487,7 +498,16 @@ def spust_https(server, host, port, slozka):
     server.router.https_port = port
     threading.Thread(target=https.serve_forever, daemon=True).start()
     _LOGGER.info("HTTPS pro Stremio v síti: https://<ip-s-pomlckami>.%s:%d", tls.DOMENA, port)
+    threading.Thread(target=_zkontroluj_dns, daemon=True).start()
     return https
+
+
+def _zkontroluj_dns():
+    if not tls.dns_funguje():
+        _LOGGER.warning(
+            "DNS tohohle zařízení nepřeloží %s — nejspíš ho blokuje ochrana proti DNS rebinding "
+            "(router, Pi-hole) nebo chybí internet. Stremio z jiných zařízení pak hlásí „Failed to fetch“. "
+            "Povol doménu %s ve výjimkách ochrany.", f"127-0-0-1.{tls.DOMENA}", tls.DOMENA)
 
 
 def verejna_adresa(text):
@@ -507,6 +527,7 @@ def main(argv=None):
                     help="kam ukládat cache jádra (v kontejneru svazek, jinak se po restartu tahá znovu)")
     ap.add_argument("--debug", action="store_true")
     args = ap.parse_args(argv)
+    keepalive.enable()   # spojení k API zdrojů se drží mezi dotazy (testy tuhle funkci nevolají)
 
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")

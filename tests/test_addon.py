@@ -1441,6 +1441,41 @@ class TestFormularBezCizihoSkriptu(unittest.TestCase):
             srv.server_close()
 
 
+class TestCspProKontroluDns(unittest.TestCase):
+    """Formulář ověřuje HTTPS adresu přes local-ip.co `fetch`em — `connect-src` ji musí pustit,
+    jinak by kontrola hlásila chybu i tam, kde všechno funguje. Jen na port HTTPS, jen s HTTPS."""
+
+    def csp(self, https_port):
+        import threading
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+        from nokturno.routes import Odpoved
+        from nokturno.server import Handler
+
+        class Smerovac:
+            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
+                return Odpoved(html="<p>x</p>")
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        srv.router = Smerovac()
+        srv.router.https_port = https_port
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{srv.server_address[1]}/configure", timeout=5) as resp:
+                return resp.headers["Content-Security-Policy"]
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_bez_https_se_csp_nemeni(self):
+        self.assertNotIn("local-ip.co", self.csp(0))
+
+    def test_s_https_pousti_jen_local_ip_na_portu_https(self):
+        csp = self.csp(7141)
+        self.assertIn("connect-src 'self' https://api.github.com https://*.my.local-ip.co:7141;", csp)
+        self.assertIn("default-src 'none'", csp)
+        self.assertNotIn("local-ip.co:*", csp)
+
+
 class TestFormularHellSpyAJazyk(unittest.TestCase):
     """Odškrtnutý checkbox dřív do adresy nešel a server dosadil výchozí „zapnuto" —
     HellSpy šlo zapnout, ale ne vypnout; „nezáleží" u jazyka končilo jako čeština."""
@@ -2776,6 +2811,39 @@ class TestHttpsVSiti(unittest.TestCase):
         self.assertEqual(tls.https_zaklad("http://127.0.0.1:7140", 7141), "https://127-0-0-1.my.local-ip.co:7141")
         self.assertIsNone(tls.https_zaklad("https://nokturno.stream", 7141))
         self.assertIsNone(tls.https_zaklad("http://192.168.1.10:7140", 0))
+
+    def test_dns_funguje_jen_kdyz_se_loopback_preloží_na_loopback(self):
+        import socket
+        from nokturno import tls
+        with mock.patch.object(tls.socket, "gethostbyname", return_value="127.0.0.1") as g:
+            self.assertTrue(tls.dns_funguje())
+        g.assert_called_once_with("127-0-0-1.my.local-ip.co")
+        with mock.patch.object(tls.socket, "gethostbyname", return_value="203.0.113.7"):
+            self.assertFalse(tls.dns_funguje(), "podvržená odpověď (např. přesměrování filtru)")
+        with mock.patch.object(tls.socket, "gethostbyname", side_effect=socket.gaierror("blokováno")):
+            self.assertFalse(tls.dns_funguje())
+
+    def test_start_https_zapise_varovani_kdyz_dns_neprelozi(self):
+        from nokturno import server, tls
+        with mock.patch.object(tls, "dns_funguje", return_value=False), \
+                mock.patch.object(server, "_LOGGER") as log:   # testy logování globálně vypínají
+            server._zkontroluj_dns()
+        text = log.warning.call_args[0][0] % log.warning.call_args[0][1:]
+        self.assertIn("DNS rebinding", text)
+        self.assertIn("my.local-ip.co", text)
+        with mock.patch.object(tls, "dns_funguje", return_value=True), \
+                mock.patch.object(server, "_LOGGER") as log:
+            server._zkontroluj_dns()
+        log.warning.assert_not_called()
+
+    def test_formular_hlida_dns_rebinding_v_obou_jazycich(self):
+        for jmeno in ("configure.html", "configure.sk.html"):
+            html = (ROOT / "nokturno" / "static" / jmeno).read_text(encoding="utf-8")
+            self.assertIn('id="dns-pozn"', html, jmeno)
+            self.assertIn('id="dns-lokalni"', html, jmeno)
+            self.assertIn('mode: "no-cors"', html, jmeno)
+            self.assertIn('ZAKLAD_DOPLNKU + "/health"', html, jmeno)
+            self.assertIn("rebind-domain-ok=/my.local-ip.co/", html, jmeno)
 
 
 class TestZavadecAdresaPoslechu(unittest.TestCase):

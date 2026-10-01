@@ -232,6 +232,16 @@
     se objeví v detailu filmu nebo dílu mezi ostatními.
   </p>
 
+  <div class="vystraha" id="dns-pozn" role="alert" hidden>
+    <strong>Adresa doplňku se z tohoto zařízení nedá otevřít.</strong>
+    Doplněk běží pod adresou typu <code>192-168-1-10.my.local-ip.co</code>, která se má přeložit na adresu zařízení
+    v tvé síti. Router nebo DNS filtr (např. Pi-hole) ji často zahodí jako ochranu proti „DNS rebinding“ a Stremio pak
+    hlásí <em>Failed to fetch</em> nebo se točí kolečko. V nastavení routeru najdi „DNS rebind protection“ a přidej výjimku
+    pro <code>my.local-ip.co</code> (u dnsmasq a Pi-hole řádek <code>rebind-domain-ok=/my.local-ip.co/</code>), nebo na tomhle
+    zařízení nastav v síti DNS <code>1.1.1.1</code>. Na počítači, kde aplikace běží, jde nastavení otevřít i přes
+    <code id="dns-lokalni">http://127.0.0.1:7140/configure</code> – tam se DNS nepoužívá.
+  </div>
+
   <ul class="kroky">
     <li><a href="#zdroje"><b>1</b>Zdroje a účty</a></li>
     <li><a href="#predvolby"><b>2</b>Předvolby</a></li>
@@ -782,6 +792,19 @@ const ZAKLAD = "__ZAKLAD__";
 const ZAKLAD_DOPLNKU = (!/Android/i.test(navigator.userAgent) && /^http:\/\/(127\.0\.0\.1|localhost)[:\/]/.test(ZAKLAD)) ? ZAKLAD : "__ZAKLAD_DOPLNKU__";
 const form = document.getElementById("form");
 const $ = (id) => document.getElementById(id);
+// Adresa doplňku přes local-ip.co se musí z tohoto zařízení přeložit. Router s ochranou DNS rebinding (nebo Pi-hole)
+// odpověď s privátní IP zahazuje a Stremio pak hlásí „Failed to fetch“. `no-cors`: stačí zjistit, jestli se spojení
+// vůbec naváže (DNS, TLS) — obsah odpovědi nepotřebujeme a CORS by ji bez toho nepustil.
+(async function () {
+  if (!/^https:\/\/[^\/]*\.my\.local-ip\.co(:|\/|$)/.test(ZAKLAD_DOPLNKU)) return;
+  const rizeni = new AbortController(), casovac = setTimeout(() => rizeni.abort(), 4000);
+  try {
+    await fetch(ZAKLAD_DOPLNKU + "/health", { mode: "no-cors", cache: "no-store", signal: rizeni.signal });
+  } catch (e) {
+    $("dns-lokalni").textContent = "http://127.0.0.1:" + (location.port || "7140") + "/configure";
+    $("dns-pozn").hidden = false;
+  } finally { clearTimeout(casovac); }
+})();
 
 // --- předvyplnění: z adresy, na které formulář stojí (Konfigurovat ve Stremiu) ---
 const soucasne = __NASTAVENI__;

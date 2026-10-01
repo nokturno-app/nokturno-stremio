@@ -2797,6 +2797,46 @@ class TestZavadecAdresaPoslechu(unittest.TestCase):
         self.assertEqual(h._zaklad(), "https://nokturno.example.cz")
 
 
+class TestZavadecSluzba(unittest.TestCase):
+    """--install / --uninstall: příkazy služby Windows a plist pro macOS."""
+
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / "baleni"))
+        import zavadec
+        self.zavadec = zavadec
+
+    def test_prikazy_instalace(self):
+        exe, data = r"C:\ProgramData\Nokturno\nokturno.exe", r"C:\ProgramData\Nokturno"
+        pr = self.zavadec.prikazy_instalace(exe, data)
+        self.assertEqual(pr[0][:3], ["sc.exe", "create", "Nokturno"])
+        binpath = pr[0][pr[0].index("binPath=") + 1]
+        self.assertTrue(binpath.startswith(f'"{exe}" --windows-sluzba --data'))
+        self.assertIn("delayed-auto", pr[0])
+        self.assertTrue(any(p[1:2] == ["failure"] and "restart/" in p[-1] for p in pr))
+        self.assertTrue(any(p[0] == "netsh" and "add" in p and f"program={exe}" in p for p in pr))
+        self.assertEqual(pr[-1], ["sc.exe", "start", "Nokturno"])
+
+    def test_prikazy_odinstalace(self):
+        pr = self.zavadec.prikazy_odinstalace()
+        self.assertIn(["sc.exe", "stop", "Nokturno"], pr)
+        self.assertIn(["sc.exe", "delete", "Nokturno"], pr)
+        self.assertTrue(any(p[0] == "netsh" and "delete" in p and "rule" in p for p in pr))
+
+    def test_plist_macos(self):
+        import plistlib
+        d = plistlib.loads(self.zavadec.plist_macos("/L/nokturno", "/L"))
+        self.assertEqual(d["Label"], "cz.nokturno.stremio")
+        self.assertEqual(d["ProgramArguments"], ["/L/nokturno", "--data", "/L"])
+        self.assertTrue(d["KeepAlive"] and d["RunAtLoad"])
+
+    def test_install_na_linuxu(self):
+        with mock.patch.object(self.zavadec, "oznam") as oznam, \
+                mock.patch.object(self.zavadec.subprocess, "run") as run:
+            self.assertEqual(self.zavadec.main(["--install"]), 2)
+        oznam.assert_called_once()
+        run.assert_not_called()
+
+
 class TestSoukromaInstance(unittest.TestCase):
     """`soukroma`: cesty doplňku jen s povoleným otiskem, formulář a POST jen mimo Cloudflare."""
 

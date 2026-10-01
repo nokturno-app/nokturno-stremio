@@ -14,6 +14,7 @@ Zip má na nejvyšší úrovni složku `nokturno/`. Vyrábí ho `baleni/balik.sh
 
 Spuštění:  nokturno [--host 0.0.0.0] [--port 7140] [--https-port 7141] [--bez-https] [--data SLOŽKA]
            nokturno --povolit <adresa doplňku>     (soukromá instance, viz nokturno/soukroma.py)
+           nokturno --install | --uninstall        (Windows a macOS: služba)
 
 `host` (v nokturno.json i --host) je adresa poslechu. Za reverzní proxy (VPS s doménou)
 127.0.0.1, ať port doplňku není vidět z internetu. `soukroma` zapne soukromou instanci:
@@ -27,6 +28,7 @@ import io
 import json
 import logging
 import os
+import plistlib
 import shutil
 import signal
 import socket
@@ -48,6 +50,12 @@ ZNACKA_AKTUALIZACE = "aktualizovat"   # stejné jméno v nokturno/routes.py
 HA_VOLBY = "/data/options.json"
 VYCHOZI = {"host": "0.0.0.0", "soukroma": False, "public_url": "", "port": 7140, "https_port": 7141, "enable_https": True, "tmdb_key": "",
            "stats": True, "crash_reports": True, "update_url": ""}
+SLUZBA = "Nokturno"
+SLUZBA_POPIS = "Nokturno pro Stremio"
+MAC_LABEL = "cz.nokturno.stremio"
+MAC_PLIST = "/Library/LaunchDaemons/cz.nokturno.stremio.plist"
+MAC_SLOZKA = "/Library/Application Support/Nokturno"
+PRENOS_IGNORUJ = ("verze", "zavadec.json", "nokturno.log")   # co se při přenosu dat nekopíruje
 
 
 def verze_tuple(v):
@@ -395,6 +403,214 @@ def tray(z):
     return True
 
 
+def slozka_sluzby():
+    return os.path.join(os.environ.get("PROGRAMDATA") or r"C:\ProgramData", "Nokturno")
+
+
+def oznam(text, chyba=False):
+    """Windows exe nemá konzoli, výsledek ukáže okno; jinde jde na výstup."""
+    if sys.platform == "win32":
+        import ctypes  # noqa: PLC0415
+        ctypes.windll.user32.MessageBoxW(None, text, SLUZBA_POPIS, 0x10 if chyba else 0x40)
+    else:
+        print(text, file=sys.stderr if chyba else sys.stdout)
+
+
+def bezi_na_portu(port):
+    """True, když na portu už odpovídá /health (služba nebo jiná instance)."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=3) as r:
+            return r.status == 200
+    except OSError:
+        return False
+
+
+def prikazy_instalace(exe, data):
+    """Příkazy pro instalaci služby Windows (čistá funkce, jen sestaví seznam)."""
+    binpath = f'"{exe}" --windows-sluzba --data "{data}"'
+    return [
+        ["sc.exe", "create", SLUZBA, "binPath=", binpath, "start=", "delayed-auto", "DisplayName=", SLUZBA_POPIS],
+        ["sc.exe", "description", SLUZBA, "Doplněk Nokturno pro Stremio a Nuvio. Nastavení: http://127.0.0.1:7140/configure"],
+        ["sc.exe", "failure", SLUZBA, "reset=", "86400", "actions=", "restart/5000/restart/5000/restart/60000"],
+        ["netsh", "advfirewall", "firewall", "add", "rule", f"name={SLUZBA_POPIS}", "dir=in", "action=allow",
+         f"program={exe}", "profile=private,domain", "enable=yes"],
+        ["sc.exe", "start", SLUZBA],
+    ]
+
+
+def prikazy_odinstalace():
+    return [["sc.exe", "stop", SLUZBA], ["sc.exe", "delete", SLUZBA],
+            ["netsh", "advfirewall", "firewall", "delete", "rule", f"name={SLUZBA_POPIS}"]]
+
+
+def je_spravce():
+    try:
+        import ctypes  # noqa: PLC0415
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except (AttributeError, OSError):
+        return False
+
+
+def povys(argv):
+    """Spustí exe znovu se stejnými argumenty jako správce; výsledek tam ohlásí okno."""
+    import ctypes  # noqa: PLC0415
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, subprocess.list2cmdline(argv), None, 1)
+    return 0
+
+
+def prenes_data(stara, nova):
+    """Při první instalaci převezme nastavení a data z dosavadní aplikace."""
+    if not os.path.isdir(nova) and os.path.isdir(stara):
+        shutil.copytree(stara, nova, ignore=shutil.ignore_patterns(*PRENOS_IGNORUJ))
+    else:
+        os.makedirs(nova, exist_ok=True)
+
+
+def zkopiruj_exe(exe):
+    """Služba pak nezávisí na tom, kde leží stažený soubor. Přeinstalace z už nainstalovaného exe nic nekopíruje."""
+    if os.path.abspath(sys.executable) != os.path.abspath(exe):
+        shutil.copy2(sys.executable, exe)
+
+
+def _sluzba_bezi():
+    r = subprocess.run(["sc.exe", "query", SLUZBA], capture_output=True, text=True)
+    return r.returncode == 0 and "RUNNING" in r.stdout
+
+
+def nainstaluj_windows(argv):
+    if not je_spravce():
+        return povys(argv)
+    data = slozka_sluzby()
+    exe = os.path.join(data, "nokturno.exe")
+    if subprocess.run(["sc.exe", "query", SLUZBA], capture_output=True).returncode == 0:
+        for p in prikazy_odinstalace():   # opakovaná instalace = aktualizace exe
+            subprocess.run(p, capture_output=True)
+        for _ in range(30):
+            if not _sluzba_bezi():
+                break
+            time.sleep(1)
+    if bezi_na_portu(7140):
+        oznam("Nokturno už běží (ikona měsíce vpravo dole). Ukonči ho (pravé tlačítko → Ukončit) a spusť instalaci znovu.", True)
+        return 1
+    prenes_data(datova_slozka(), data)
+    zkopiruj_exe(exe)
+    for p in prikazy_instalace(exe, data):
+        r = subprocess.run(p, capture_output=True, text=True)
+        if r.returncode != 0:
+            oznam(f"Instalace služby selhala: {' '.join(p[:2])}\n{r.stdout}{r.stderr}", True)
+            return 1
+    oznam("Nokturno běží jako služba Windows a spustí se samo po zapnutí počítače, i bez přihlášení.\n\n"
+          "Nastavení: http://127.0.0.1:7140/configure\nOdinstalace: nokturno.exe --uninstall")
+    return 0
+
+
+def odinstaluj_windows(argv):
+    if not je_spravce():
+        return povys(argv)
+    for p in prikazy_odinstalace():
+        r = subprocess.run(p, capture_output=True, text=True)
+        if r.returncode != 0:
+            oznam(f"{' '.join(p[:2])}: {r.stdout}{r.stderr}".strip(), True)
+    with contextlib.suppress(OSError):
+        os.remove(os.path.join(slozka_sluzby(), "nokturno.exe"))   # za běhu nemusí jít hned
+    oznam("Služba Nokturno je odinstalovaná. Nastavení a data zůstala v " + slozka_sluzby())
+    return 0
+
+
+def plist_macos(exe, data):
+    """LaunchDaemon (čistá funkce): služba běží od startu Macu, při pádu se restartuje."""
+    return plistlib.dumps({"Label": MAC_LABEL, "ProgramArguments": [exe, "--data", data],
+                           "RunAtLoad": True, "KeepAlive": True,
+                           "StandardOutPath": data + "/nokturno.log", "StandardErrorPath": data + "/nokturno.log"})
+
+
+def nainstaluj_macos(_argv):
+    if os.geteuid() != 0:
+        oznam("Spusť instalaci přes sudo: sudo ./" + os.path.basename(sys.executable) + " --install", True)
+        return 1
+    if os.path.exists(MAC_PLIST):   # opakovaná instalace = aktualizace
+        subprocess.run(["launchctl", "bootout", "system/" + MAC_LABEL], capture_output=True)
+    if bezi_na_portu(7140):
+        oznam("Nokturno už běží – ukonči ho (Ctrl+C v Terminálu) a spusť instalaci znovu.", True)
+        return 1
+    stara = os.path.expanduser("~" + os.environ.get("SUDO_USER", "") + "/Library/Application Support/Nokturno")
+    prenes_data(stara, MAC_SLOZKA)
+    exe = MAC_SLOZKA + "/nokturno"
+    zkopiruj_exe(exe)
+    os.chmod(exe, 0o755)
+    with open(MAC_PLIST, "wb") as f:
+        f.write(plist_macos(exe, MAC_SLOZKA))
+    os.chmod(MAC_PLIST, 0o644)
+    r = subprocess.run(["launchctl", "bootstrap", "system", MAC_PLIST], capture_output=True, text=True)
+    if r.returncode != 0:
+        oznam(f"Instalace služby selhala: launchctl bootstrap\n{r.stdout}{r.stderr}", True)
+        return 1
+    oznam("Nokturno běží jako služba macOS a spustí se samo po zapnutí Macu, i bez přihlášení. "
+          "Okno Terminálu můžeš zavřít.\nNastavení: http://127.0.0.1:7140/configure\n"
+          'Odinstalace: sudo "/Library/Application Support/Nokturno/nokturno" --uninstall')
+    return 0
+
+
+def odinstaluj_macos(_argv):
+    if os.geteuid() != 0:
+        oznam('Spusť odinstalaci přes sudo: sudo "' + sys.executable + '" --uninstall', True)
+        return 1
+    r = subprocess.run(["launchctl", "bootout", "system/" + MAC_LABEL], capture_output=True, text=True)
+    if r.returncode != 0:
+        oznam(f"launchctl bootout: {r.stdout}{r.stderr}".strip(), True)
+    for cesta in (MAC_PLIST, MAC_SLOZKA + "/nokturno"):
+        with contextlib.suppress(OSError):
+            os.remove(cesta)
+    oznam("Služba Nokturno je odinstalovaná. Nastavení a data zůstala v " + MAC_SLOZKA)
+    return 0
+
+
+def _jen_zabalene():
+    if zmrazeny() and sys.platform in ("win32", "darwin"):
+        return False
+    oznam("Instalace služby funguje jen v aplikaci pro Windows a macOS. Na Linuxu použij install.sh (viz README).", True)
+    return True
+
+
+def nainstaluj_sluzbu(argv):
+    if _jen_zabalene():
+        return 2
+    return (nainstaluj_windows if sys.platform == "win32" else nainstaluj_macos)(argv)
+
+
+def odinstaluj_sluzbu(argv):
+    if _jen_zabalene():
+        return 2
+    return (odinstaluj_windows if sys.platform == "win32" else odinstaluj_macos)(argv)
+
+
+def windows_sluzba(data):
+    """Běh pod správcem služeb Windows (pywin32); doplněk hlídá `Zavadec` jako jinde."""
+    import servicemanager  # noqa: PLC0415
+    import win32service  # noqa: PLC0415
+    import win32serviceutil  # noqa: PLC0415
+
+    class Sluzba(win32serviceutil.ServiceFramework):
+        _svc_name_ = SLUZBA
+        _svc_display_name_ = SLUZBA_POPIS
+
+        def __init__(self, args):
+            super().__init__(args)
+            self.z = Zavadec(nacti_volby(data), data)
+
+        def SvcDoRun(self):
+            self.z.bez()
+
+        def SvcStop(self):
+            self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING, waitHint=30000)
+            self.z.konec.set()
+
+    servicemanager.Initialize()
+    servicemanager.PrepareToHostSingle(Sluzba)
+    servicemanager.StartServiceCtrlDispatcher()
+    return 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["--sluzba"]:
@@ -407,11 +623,22 @@ def main(argv=None):
     ap.add_argument("--https-port", type=int)
     ap.add_argument("--bez-https", action="store_true")
     ap.add_argument("--data", help="datová složka (nastavení, cache, stažené verze)")
+    ap.add_argument("--install", action="store_true",
+                    help="Windows a macOS: nainstalovat jako službu (spustí se po startu počítače i bez přihlášení)")
+    ap.add_argument("--uninstall", action="store_true",
+                    help="Windows a macOS: odinstalovat službu, data nechá")
+    ap.add_argument("--windows-sluzba", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
+    if args.install:
+        return nainstaluj_sluzbu(argv)
+    if args.uninstall:
+        return odinstaluj_sluzbu(argv)
     data = args.data or datova_slozka()
     os.makedirs(data, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
                         **({} if sys.stderr else {"filename": os.path.join(data, "nokturno.log"), "encoding": "utf-8"}))   # bez konzole (Windows tray)
+    if args.windows_sluzba:
+        return windows_sluzba(data)
     if args.povolit:
         return povolit(args.povolit, os.path.join(data, "cache"))
     volby = nacti_volby(data)
@@ -428,6 +655,9 @@ def main(argv=None):
     z = Zavadec(volby, data)
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, lambda *_: z.konec.set())
+    if sys.platform == "win32" and zmrazeny() and bezi_na_portu(z.port):
+        webbrowser.open(f"http://127.0.0.1:{z.port}/configure")   # běží služba nebo jiná instance
+        return 0
     if sys.platform == "win32" and zmrazeny() and tray(z):
         return 0
     try:

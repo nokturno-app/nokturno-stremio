@@ -3014,10 +3014,12 @@ class TestCaSvazek(unittest.TestCase):
             os.environ["SSL_CERT_FILE"] = self.puvodni
 
     def test_zmrazeny_program_pouzije_certifi(self):
-        import certifi
-        with mock.patch.object(sys, "frozen", True, create=True):
-            self.z._ca_svazek()
-        self.assertEqual(os.environ["SSL_CERT_FILE"], certifi.where())
+        with tempfile.NamedTemporaryFile(suffix=".pem") as pem:
+            falesny = mock.Mock(where=lambda: pem.name)
+            with mock.patch.object(sys, "frozen", True, create=True), \
+                    mock.patch.dict(sys.modules, {"certifi": falesny}):
+                self.z._ca_svazek()
+            self.assertEqual(os.environ["SSL_CERT_FILE"], pem.name)
 
     def test_bez_zmrazeni_se_nic_nemeni(self):
         self.z._ca_svazek()

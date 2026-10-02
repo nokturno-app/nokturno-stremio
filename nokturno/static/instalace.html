@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Nokturno – přidat doplněk</title>
+<style>
+  :root {
+    --pozadi: #0d0c1d; --panel: #17162b; --panel-2: #1c1b33; --pole: #201f38; --okraj: #2f2d4d;
+    --text: #e8e6f5; --tlumene: #9a97b8; --akcent: #7b5bf5; --akcent-tmavy: #6547d6;
+    --ok: #3ecf8e; --ok-pozadi: #12291f; --vystraha: #f5a524; --vystraha-pozadi: #2a2214;
+    --chyba: #ff6b6b; --chyba-pozadi: #2c1518;
+  }
+  /* barvy mimo základní paletu; světlá verze níž, přepínač ☀/☾ ukládá volbu do localStorage */
+  :root { color-scheme: dark; --odkaz: #a993ff; --odkaz-hover: #c7b8ff; --akcent-svetly: #cbbcff;
+          --doporuceno-pozadi: #221c45; --ok-okraj: #22563f; --pozor-text: #ffd694; --pozor-okraj: #5a4318;
+          --stin: rgba(0,0,0,.5); --cara: rgba(255,255,255,.08); }
+  :root[data-theme="light"] { --pozadi: #f6f5fb; --panel: #ffffff; --panel-2: #f1effa; --pole: #f3f1fa; --okraj: #e2def0;
+    --text: #1c1a33; --tlumene: #5f5b7a; --akcent: #6d4ef0; --akcent-tmavy: #5a3dd8;
+    --ok: #13925f; --ok-pozadi: #e6f6ee; --vystraha: #b7791f; --vystraha-pozadi: #fdf4e3;
+    --chyba: #d63939; --chyba-pozadi: #fdecec;
+    --odkaz: #5b3fd9; --odkaz-hover: #3f27b0; --akcent-svetly: #5b3fd9; --doporuceno-pozadi: #ece7ff;
+    --ok-okraj: #a6dfc3; --pozor-text: #8a5a0f; --pozor-okraj: #f0d49a;
+    --stin: rgba(30,20,80,.12); --cara: rgba(0,0,0,.08); color-scheme: light; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --pozadi: #f6f5fb; --panel: #ffffff; --panel-2: #f1effa; --pole: #f3f1fa; --okraj: #e2def0;
+    --text: #1c1a33; --tlumene: #5f5b7a; --akcent: #6d4ef0; --akcent-tmavy: #5a3dd8;
+    --ok: #13925f; --ok-pozadi: #e6f6ee; --vystraha: #b7791f; --vystraha-pozadi: #fdf4e3;
+    --chyba: #d63939; --chyba-pozadi: #fdecec;
+    --odkaz: #5b3fd9; --odkaz-hover: #3f27b0; --akcent-svetly: #5b3fd9; --doporuceno-pozadi: #ece7ff;
+    --ok-okraj: #a6dfc3; --pozor-text: #8a5a0f; --pozor-okraj: #f0d49a;
+    --stin: rgba(30,20,80,.12); --cara: rgba(0,0,0,.08); color-scheme: light; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--pozadi); color: var(--text);
+         font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 28rem; margin: 0 auto; padding-top: 1.5rem; display: flex; flex-direction: column; gap: .7rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .4rem; line-height: 1.2; }
+  button { font: inherit; font-weight: 600; padding: .8rem 1.15rem; border-radius: 9px; cursor: pointer;
+           background: var(--panel); color: var(--text); border: 1px solid var(--okraj); }
+  button:hover { border-color: var(--akcent); }
+  button.hlavni { background: var(--akcent); border-color: var(--akcent); color: #fff; }
+  button.hlavni:hover { background: var(--akcent-tmavy); }
+  #stav { font-size: .88rem; color: var(--akcent-svetly); }
+  #stav:empty { display: none; }
+  #stav.chyba { color: var(--chyba); }
+  pre { margin: 0; padding: .6rem .75rem; background: var(--pole); border: 1px solid var(--okraj); border-radius: 8px;
+        font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .74rem; white-space: pre-wrap; word-break: break-all; color: var(--tlumene); }
+  p { margin: 0; font-size: .82rem; color: var(--tlumene); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Přidat Nokturno do aplikace</h1>
+  <button type="button" class="hlavni" id="stremio">Přidat do Stremia</button>
+  <button type="button" class="hlavni" id="nuvio">Přidat do Nuvia</button>
+  <button type="button" id="kopirovat">Zkopírovat adresu</button>
+  <div id="stav"></div>
+  <pre id="adresa"></pre>
+  <p>Mobil musí být ve stejné síti jako počítač s aplikací Nokturno.</p>
+</main>
+<script>
+const ADRESA = "__ADRESA__";
+const $ = (id) => document.getElementById(id);
+$("adresa").textContent = ADRESA;
+const otevri = (schema) => () => { location.href = ADRESA.replace(/^https?:\/\//, schema); };
+$("stremio").addEventListener("click", otevri("stremio://"));
+$("nuvio").addEventListener("click", otevri("nuvio://"));
+// Přes HTTP prohlížeč Clipboard API nedá – záloha přes execCommand.
+async function zkopiruj(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  const pole = document.createElement("textarea");
+  pole.value = text;
+  pole.setAttribute("readonly", "");
+  pole.style.position = "fixed";
+  pole.style.opacity = "0";
+  document.body.appendChild(pole);
+  pole.select();
+  const ok = document.execCommand("copy");
+  pole.remove();
+  if (!ok) throw new Error("copy");
+}
+$("kopirovat").addEventListener("click", async () => {
+  try {
+    await zkopiruj(ADRESA);
+    $("stav").textContent = "Adresa zkopírována. Ve Streamletu nebo jiné aplikaci ji vlož mezi doplňky.";
+    $("stav").classList.remove("chyba");
+  } catch {
+    $("stav").textContent = "Kopírování prohlížeč nedovolil – adresu označ a zkopíruj ručně.";
+    $("stav").classList.add("chyba");
+  }
+});
+</script>
+</body>
+</html>

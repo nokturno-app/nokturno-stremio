@@ -327,7 +327,7 @@ class Handler(BaseHTTPRequestHandler):
             self._nahlas()
 
     def do_POST(self):
-        """Jen `/povolit` a `/aplikace` z formuláře (viz `Router.post`)."""
+        """Jen `/povolit`, `/profil` a `/aplikace` z formuláře (viz `Router.post`)."""
         self._odeslano = False
         self._zacni()
         try:
@@ -336,7 +336,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._posli(Odpoved(status=413, text=""))
                 return
             telo = self.rfile.read(delka).decode("utf-8", "replace")
-            self._posli(self.server.router.post(self.path, telo, self.headers))
+            self._posli(self.server.router.post(self.path, telo, self.headers, zaklad=self._zaklad()))
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, ssl.SSLError):
             pass
         except Exception:  # noqa: BLE001 – žádná chyba nesmí ukončit službu

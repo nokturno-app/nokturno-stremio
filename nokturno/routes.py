@@ -6,16 +6,20 @@
     GET /c/<nastavení>/stream/:t/:id.json   streamy k titulu
     GET /c/<nastavení>/play/:payload     302 na skutečný soubor
     GET /c/<nastavení>/check             ověření účtů pro formulář (WebShare + VIP)
+    GET /c/<klíč>/instalace              stránka pro mobil (QR): přidat do Stremia, Nuvia, zkopírovat
     GET /cztor/pin                       nový klíč a PIN pro párování CZtoru (viz cztor.py)
     GET /cztor/poll?k=<klíč>&t=<token>   čeká na potvrzení PINu na cztor.com/activate
     GET /health                          pro kontejner
+    POST /profil                         uložení nastavení pod klíč profilu (viz profily.py)
+    POST /profily, /profil/jmeno, /profil/smazat   seznam, pojmenování a smazání profilů (formulář)
     POST /povolit                        soukromá instance: připíše otisk nastavení (viz soukroma.py)
     POST /aplikace                       statistiky a hlášení o pádech z formuláře
     GET|POST /aktualizace                verze a kontrola aktualizace hned (jen pod zavaděčem)
 
 Stremio nemá soubor nastavení — účty se nosí zakódované v cestě adresy, takže
 každý, kdo si doplněk přidá, má vlastní. Server si nic nepamatuje a hledá vždy
-pod účtem toho, kdo se ptá.
+pod účtem toho, kdo se ptá. Od 9.6.0 formulář nastavení ukládá do aplikace (profily.py)
+a adresa nese jen klíč profilu; staré adresy s nastavením fungují dál.
 
 Adresy bez `/c/<nastavení>/` fungují dál a berou nastavení z prostředí. Drží to
 při životě instance nasazené dřív, než tahle vrstva vznikla. **Jen ze soukromé
@@ -58,7 +62,7 @@ from .core.lib.fastshare_api import FastshareApi
 from .core.lib.prehrajto_api import PrehrajtoApi
 from .core.lib.storage_api import SLOTS, StorageApi
 from .core.lib.cztor_api import CztorError
-from . import config, cztor, mapping, sit, soukroma
+from . import config, cztor, mapping, profily, sit, soukroma
 from .enginy import PrilisMnohoNovych
 from .identita import Identita
 from . import tls
@@ -69,7 +73,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "9.5.4"
+VERZE = "9.6.0"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián
@@ -418,11 +422,23 @@ class Router:
         # tolik souborů, že LXC 124 došly inody i sousednímu dashboardu.
         self.blokovane = frozenset(blokovane or ())
         self.povolena = None   # soukroma.Povolena = soukromá instance (server.vytvor_server)
+        data_dir = getattr(enginy, "data_dir", None)
+        self.profily = profily.Profily(data_dir) if data_dir else None
         self.pady = None       # pady.Pady, kvůli přepínači na /configure
 
     # --- soukromá instance a volby aplikace --------------------------------
     STRANKY = ("", "/", "/configure", "/configure/", "/check")
     CESTY_DOPLNKU = ("/manifest.json", "/stream/", "/catalog/", "/meta/", "/play/")
+
+    def _nastaveni(self, kousek):
+        """Kousek adresy → nastavení. Klíč profilu se nejdřív přeloží na uložený kousek. None = nečitelné."""
+        if profily.je_klic(kousek):
+            ulozeny = self.profily.nacti(kousek) if self.profily else None
+            return config.decode(ulozeny) if ulozeny else None
+        return config.decode(kousek)
+
+    def _zaklad_doplnku(self, zaklad):
+        return self.public_url or tls.https_zaklad(zaklad, self.https_port) or zaklad
 
     def _soukroma(self, cesta, z_proxy):
         """Na soukromé instanci: cesty doplňku jen s povoleným otiskem, ostatní jen mimo proxy.
@@ -430,7 +446,7 @@ class Router:
         kousek, zbytek = self._rozdel(cesta)
         doplnek = zbytek not in self.STRANKY if kousek else zbytek.startswith(self.CESTY_DOPLNKU)
         if doplnek:
-            options = config.decode(kousek) if kousek else self.enginy.vychozi_options
+            options = self._nastaveni(kousek) if kousek else self.enginy.vychozi_options
             if options is not None and self.povolena.obsahuje(soukroma.otisk(options)):
                 return None
         elif not z_proxy:
@@ -468,7 +484,7 @@ class Router:
         if "crash_reports" in volby and self.pady is not None:
             self.pady.zapnuto = bool(volby["crash_reports"])
 
-    def post(self, cesta, telo, headers):
+    def post(self, cesta, telo, headers, zaklad=""):
         """POST jen z formuláře mimo proxy. Vlastní hlavička `X-Nokturno` vynutí u cizího webu
         preflight, který neprojde (CORS tu není), takže jiná stránka v prohlížeči majitele
         nastavení nezmění."""
@@ -484,6 +500,41 @@ class Router:
             self.povolena.pridej(otisk)
             _LOGGER.info("povolené nastavení %s", otisk)
             return Odpoved(data={"ok": True, "otisk": otisk})
+        if cesta == "/profil":
+            if self.profily is None:
+                return chyba(404, "Profily tu nejsou.")
+            try:
+                data = json.loads(telo or "{}")
+                kousek = str(data["nastaveni"])
+            except (ValueError, TypeError, KeyError):
+                return chyba(400, "Nečitelné nastavení.")
+            options = config.decode(kousek)
+            if options is None:
+                return chyba(400, "Nečitelné nastavení.")
+            try:
+                klic = self.profily.uloz(config.encode(options), data.get("klic"), prevod=bool(data.get("prevod")))
+            except ValueError:
+                return chyba(507, "Profilů je moc, starý smaž v datové složce aplikace.")
+            if self.povolena is not None:
+                self.povolena.pridej(soukroma.otisk(options))   # majitel ukládá mimo proxy = rovnou povoleno
+            if data.get("jmeno") is not None:
+                self.profily.pojmenuj(klic, data["jmeno"])
+            instalace = self._zaklad_doplnku(zaklad) + "/c/" + klic + "/instalace"
+            return Odpoved(data={"klic": klic, "instalace": instalace, "qr": profily.qr_svg(instalace)})
+        if cesta in ("/profily", "/profil/jmeno", "/profil/smazat"):
+            # správa profilů – jen majitel (mimo proxy, s hlavičkou), seznam nese klíče = účty
+            if self.profily is None:
+                return chyba(404, "Profily tu nejsou.")
+            try:
+                data = json.loads(telo or "{}")
+                klic = str(data.get("klic") or "") if isinstance(data, dict) else ""
+            except ValueError:
+                return chyba(400, "Nečitelný požadavek.")
+            if cesta == "/profil/jmeno" and not self.profily.pojmenuj(klic, data.get("jmeno")):
+                return chyba(404, "Profil neexistuje.")
+            if cesta == "/profil/smazat" and not self.profily.smaz(klic):
+                return chyba(404, "Profil neexistuje.")
+            return Odpoved(data={"profily": self.profily.seznam()})
         if cesta == "/aktualizace":
             if not self.UPDATE_URL:
                 return chyba(404, "Aktualizace řídí zavaděč, tady neběží.")
@@ -514,7 +565,7 @@ class Router:
         """Čím je adresa jedinečná — jen pro přehled útočníků, bez ověření podpisu:
         1 = token identity (`id`), 2 = vlastní účty (jedinečný otisk), 0 = nic (sdílené)."""
         kousek, _ = self._rozdel(urllib.parse.unquote((cesta or "").split("?", 1)[0]))
-        options = config.decode(kousek) if kousek else None
+        options = self._nastaveni(kousek) if kousek else None
         if not options:
             return 0
         return 1 if options.get(config.ID_KLIC) else 2 if config.ma_ucty(options) else 0
@@ -563,7 +614,7 @@ class Router:
             html = self._stranka("configure", jazyk)
         except OSError:
             return chyba(500, "Formulář nastavení chybí.")
-        soucasne = config.decode(kousek) if kousek else None
+        soucasne = self._nastaveni(kousek) if kousek else None
         if soucasne is None and self.predvyplnit and not verejny:
             soucasne = self.enginy.vychozi_options
         # hodnoty z adresy jsou od kohokoli — do <script> jen escapované (viz json_do_scriptu)
@@ -571,12 +622,26 @@ class Router:
         nabidka = self.katalogy.formular(jazyk) if self.katalogy else []
         html = html.replace("__KATALOGY__", mapping.json_do_scriptu(nabidka))
         # adresa doplňku: v síti HTTPS přes local-ip.co (Stremio jinak http z LAN nevezme)
-        doplnek = self.public_url or tls.https_zaklad(zaklad, self.https_port) or zaklad
+        doplnek = self._zaklad_doplnku(zaklad)
         html = html.replace("__ZAKLAD_DOPLNKU__", html_lib.escape(doplnek, quote=True))
         html = html.replace("__ZAKLAD__", html_lib.escape(zaklad, quote=True))
+        html = html.replace("__PROFIL__", kousek if profily.je_klic(kousek or "") and soucasne is not None else "")
         html = html.replace("__VERZE__", self.verze)
         html = html.replace("__ID__", self._identita_pro_formular(soucasne, klient))
         html = html.replace("__APLIKACE__", mapping.json_do_scriptu({**self.aplikace(), "sprava": not z_proxy}))
+        return Odpoved(html=html)
+
+    def instalace(self, kousek, zaklad, jazyk):
+        """Stránka z QR kódu: tlačítka pro přidání doplňku do Stremia, Nuvia a zkopírování adresy."""
+        if self._nastaveni(kousek) is None:
+            return chyba(404, "Tohle nastavení už v aplikaci není. Ulož ho znovu na /configure")
+        try:
+            html = self._stranka("instalace", jazyk)
+        except OSError:
+            return chyba(500, "Stránka chybí.")
+        adresa = self._zaklad_doplnku(zaklad) + "/c/" + kousek + "/manifest.json"
+        html = html.replace("__ADRESA__", html_lib.escape(adresa, quote=True))
+        html = html.replace("__ZAKLAD__", html_lib.escape(zaklad, quote=True))
         return Odpoved(html=html)
 
     def _identita_pro_formular(self, soucasne, klient):
@@ -918,8 +983,10 @@ class Router:
             return self.cztor_poll(urllib.parse.parse_qs(dotaz), klient)
 
         kousek, zbytek = self._rozdel(cesta)
-        options = config.decode(kousek) if kousek else None
+        options = self._nastaveni(kousek) if kousek else None
         if kousek and options is None:
+            if profily.je_klic(kousek):
+                return chyba(404, "Tohle nastavení už v aplikaci není. Ulož ho znovu na /configure")
             return chyba(404, "Adresa nese nečitelné nastavení. Vyrob si novou na /configure")
         if options and options.get(config.ID_KLIC):
             platna = self.identita.platna(options[config.ID_KLIC])
@@ -946,6 +1013,9 @@ class Router:
             if zbytek in ("/configure", "/configure/"):
                 return self.configure(kousek, zaklad, verejny, jazyk, klient, z_proxy)
             return self.uvod(zaklad, jazyk)
+
+        if kousek and zbytek == "/instalace":
+            return self.instalace(kousek, zaklad, jazyk)
 
         if verejny and not kousek:
             if zbytek == "/manifest.json":

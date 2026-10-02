@@ -1198,7 +1198,7 @@ class TestSlovencina(unittest.TestCase):
     def test_adresa_doplnku_nenese_jazyk(self):
         for jazyk in ("cs", "sk"):
             html = self.html(f"/configure?lang={jazyk}")
-            self.assertIn('const adresa = () => ZAKLAD_DOPLNKU + "/c/" + kousek() + "/manifest.json";', html)
+            self.assertIn('const adresa = () => profil ? ZAKLAD_DOPLNKU + "/c/" + profil + "/manifest.json" : "";', html)
             self.assertIn(f'const ZAKLAD = "{ZAKLAD}";', html)
 
     def test_manifest_zustava_cesky_a_lang_ho_nerozbije(self):
@@ -1977,6 +1977,19 @@ class TestStylFormulare(unittest.TestCase):
             selektor = re.search(r"^\s*(input\[type=[^{]+)\{", html, re.M).group(1)
             stylovane = set(re.findall(r"input\[type=([a-z]+)\]", selektor))
             self.assertEqual(typy - stylovane, set(), f"{jmeno}: input bez stylu")
+
+    def test_zdroje_v_zalozkach_a_overeni_vseho(self):
+        """Zdroje jsou v záložkách (tab + panel na každý) a je tlačítko Ověřit všechny účty."""
+        for jmeno in ("configure.html", "configure.sk.html"):
+            html = (ROOT / "nokturno" / "static" / jmeno).read_text(encoding="utf-8")
+            self.assertIn('role="tablist"', html)
+            self.assertEqual(html.count('role="tabpanel"'), 8, jmeno)
+            self.assertEqual(html.count('role="tab"'), 8, jmeno)
+            self.assertIn('id="overit-vse"', html)
+            self.assertIn('id="vysledek-vse"', html)
+            for kod in ("dav", "ws", "su", "st", "fs", "pt", "cz", "hs"):
+                self.assertIn(f'id="tab-{kod}"', html, jmeno)
+                self.assertIn(f'id="panel-{kod}"', html, jmeno)
 
 
 class TestHeadAProxyKodovani(unittest.TestCase):
@@ -3098,3 +3111,124 @@ class TestCaSvazek(unittest.TestCase):
         with mock.patch.object(sys, "frozen", True, create=True):
             self.z._ca_svazek()
         self.assertEqual(os.environ["SSL_CERT_FILE"], "/x/ca.pem")
+
+
+class TestProfily(unittest.TestCase):
+    """9.6.0: nastavení se ukládá v aplikaci a adresa nese jen klíč profilu."""
+
+    def setUp(self):
+        from nokturno.enginy import Enginy
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.r = Router(Enginy(self.tmp.name, {}))
+
+    def _uloz(self, kousek=KOUSEK, klic=None):
+        telo = json.dumps({"nastaveni": kousek, **({"klic": klic} if klic else {})})
+        return self.r.post("/profil", telo, {"X-Nokturno": "1"}, zaklad=ZAKLAD)
+
+    def test_profily_uloz_a_nacti(self):
+        from nokturno import profily
+        p = profily.Profily(self.tmp.name)
+        klic = p.uloz("abc")
+        self.assertTrue(profily.KLIC_RE.match(klic))
+        self.assertEqual(p.nacti(klic), "abc")
+        self.assertEqual(p.uloz("def", klic), klic)
+        self.assertEqual(p.nacti(klic), "def")
+        self.assertNotEqual(p.uloz("x", "neplatny"), "neplatny")
+        self.assertEqual(profily.Profily(self.tmp.name).nacti(klic), "def")
+        self.assertIsNone(p.nacti("p" + "A" * 22))
+
+    def test_prevod_stare_adresy_da_tyz_profil(self):
+        """Stará dlouhá adresa otevřená podruhé nesmí založit další profil."""
+        prevod = lambda: self.r.post("/profil", json.dumps({"nastaveni": KOUSEK, "prevod": True}),
+                                     {"X-Nokturno": "1"}, zaklad=ZAKLAD).data["klic"]
+        self.assertEqual(prevod(), prevod())
+
+    def test_novy_profil_se_stejnym_nastavenim_neprepise_stary(self):
+        """„+ Nový profil“ se stejnými účty musí založit další profil, ne přepsat (hlášení 2026-10-02)."""
+        self.assertNotEqual(self._uloz().data["klic"], self._uloz().data["klic"])
+
+    def test_sprava_profilu(self):
+        post = lambda c, d: self.r.post(c, json.dumps(d), {"X-Nokturno": "1"})
+        klic = self._uloz().data["klic"]
+        self.assertEqual(post("/profil/jmeno", {"klic": klic, "jmeno": "  Obývák  "}).data["profily"][0]["jmeno"], "Obývák")
+        self.assertEqual(self._uloz(klic=klic).data["klic"], klic)
+        self.assertEqual(post("/profily", {}).data["profily"][0]["jmeno"], "Obývák")   # uložení jméno nesmaže
+        self.assertEqual(self.r.post("/profily", "{}", {}).status, 403)                # bez hlavičky nic
+        self.assertEqual(post("/profil/jmeno", {"klic": "p" + "A" * 22, "jmeno": "x"}).status, 404)
+        self.assertEqual(post("/profil/smazat", {"klic": klic}).data["profily"], [])
+        self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 404)
+
+    def test_formular_prevede_starou_adresu(self):
+        for jmeno in ("configure.html", "configure.sk.html"):
+            html = (ROOT / "nokturno" / "static" / jmeno).read_text(encoding="utf-8")
+            self.assertIn("/\\/c\\/eyJ/.test(location.pathname)", html, jmeno)
+
+    @unittest.skipIf(os.name != "posix", "práva jen na POSIX")
+    def test_profily_prava_0600(self):
+        import stat
+        from nokturno import profily
+        profily.Profily(self.tmp.name).uloz("abc")
+        self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.tmp.name, profily.PROFILY)).st_mode), 0o600)
+
+    def test_profily_strop(self):
+        from nokturno import profily
+        p = profily.Profily(self.tmp.name)
+        with mock.patch.object(profily, "MAX_PROFILU", 2):
+            a = p.uloz("1")
+            p.uloz("2")
+            with self.assertRaises(ValueError):
+                p.uloz("3")
+            self.assertEqual(p.uloz("4", a), a)
+
+    def test_post_profil(self):
+        d = self._uloz().data
+        self.assertTrue(d["instalace"].endswith(f"/c/{d['klic']}/instalace"))
+        self.assertTrue(d["qr"].startswith("<svg"))
+        self.assertEqual(self._uloz(klic=d["klic"]).data["klic"], d["klic"])
+        self.assertEqual(self.r.post("/profil", json.dumps({"nastaveni": KOUSEK}), {}, zaklad=ZAKLAD).status, 403)
+        self.assertEqual(self._uloz("###").status, 400)
+
+    def test_manifest_z_klice_je_stejny(self):
+        klic = self._uloz().data["klic"]
+        self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).data,
+                         self.r.route(f"/c/{KOUSEK}/manifest.json", ZAKLAD).data)
+        self.assertEqual(self.r.route("/c/p" + "A" * 22 + "/manifest.json", ZAKLAD).status, 404)
+
+    def test_configure_nese_klic(self):
+        klic = self._uloz().data["klic"]
+        self.assertIn(f'let profil = "{klic}";', self.r.route(f"/c/{klic}/configure", ZAKLAD).html)
+        html = self.r.route("/configure", ZAKLAD).html
+        self.assertIn('let profil = "";', html)
+        self.assertNotIn("__PROFIL__", html)
+
+    def test_instalace(self):
+        klic = self._uloz().data["klic"]
+        html = self.r.route(f"/c/{klic}/instalace", ZAKLAD).html
+        self.assertIn(f"/c/{klic}/manifest.json", html)
+        self.assertIn("stremio://", html)
+        self.assertNotIn("__ADRESA__", html)
+
+    def test_soukroma_instance_povoli_otisk(self):
+        from nokturno import soukroma
+        self.r.povolena = soukroma.Povolena(self.tmp.name)
+        klic = self._uloz().data["klic"]
+        self.assertTrue(self.r.povolena.obsahuje(soukroma.otisk(config.decode(KOUSEK))))
+        self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 200)
+
+    def test_qr_svg(self):
+        from nokturno import profily
+        svg = profily.qr_svg("https://x")
+        self.assertIn("<path", svg)
+        self.assertIn("viewBox", svg)
+
+    def test_stranky_maji_prvky(self):
+        st = ROOT / "nokturno" / "static"
+        for jm in ("configure.html", "configure.sk.html"):
+            t = (st / jm).read_text(encoding="utf-8")
+            for s in ("__PROFIL__", 'id="qr"', 'id="ulozit"', 'id="qr-okno"'):
+                self.assertIn(s, t, (jm, s))
+        for jm in ("instalace.html", "instalace.sk.html"):
+            t = (st / jm).read_text(encoding="utf-8")
+            for s in ("__ADRESA__", "stremio://", "nuvio://"):
+                self.assertIn(s, t, (jm, s))

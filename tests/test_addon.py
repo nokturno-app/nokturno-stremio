@@ -810,18 +810,20 @@ class TestFastshareVeStremiu(unittest.TestCase):
                          {"ok": True, "neomezene": False, "kredit_mb": 20480})
         self.assertFalse(self._check({"fs_username": "u", "fs_password": "spatne"})["ok"])
 
-    def test_stream_nese_cookie_v_proxyheaders(self):
-        """Cookie z přihlášení pošle přehrávač sám — data netečou přes tenhle server."""
+    def test_stream_jde_pres_play_bez_cookie(self):
+        """Cookie z přihlášení klientovi neodchází – soubor přepošle aplikace (`/play/`)."""
         adresa = "https://data4.fastshare.cloud/download.php?id=1"
         objekt = mapping.stream_object({"url": "fs:1:data4:10", "file": "film.mkv"}, lambda v: "/play/" + v,
                                        primy=lambda v: (adresa, {"Cookie": "FASTSHARE=H"}))
-        self.assertEqual(objekt["url"], adresa)
-        self.assertEqual(objekt["behaviorHints"]["proxyHeaders"], {"request": {"Cookie": "FASTSHARE=H"}})
-        self.assertTrue(objekt["behaviorHints"]["notWebReady"])
+        self.assertEqual(objekt["url"], "/play/fs:1:data4:10")
+        self.assertNotIn("proxyHeaders", objekt["behaviorHints"])
 
-    def test_play_uz_fastshare_neobsluhuje(self):
-        odpoved = router().play(object(), mapping.zakoduj("fs:1:data4:10"))
-        self.assertEqual(odpoved.status, 410, "proxy zrušená v 5.2.26 — starý odkaz má říct proč")
+    def test_play_fastshare_vrati_proxy(self):
+        class Engine:
+            def file_request(self, url):
+                return ("https://data4.fastshare.cloud/x", {"Cookie": "FASTSHARE=H"})
+        odpoved = router().play(Engine(), mapping.zakoduj("fs:1:data4:10"))
+        self.assertEqual(odpoved.proxy, ("https://data4.fastshare.cloud/x", {"Cookie": "FASTSHARE=H"}))
 
     def test_zdroj_z_nastaveni_a_prostredi(self):
         self.assertEqual(config.PROSTREDI["NOKTURNO_FS_USERNAME"], "fs_username")
@@ -990,20 +992,82 @@ class TestVlastniUloziste(unittest.TestCase):
     def test_odkaz_projde_dekodovanim(self):
         self.assertEqual(mapping.dekoduj(mapping.zakoduj("dav:1:Filmy/a b.mkv")), "dav:1:Filmy/a b.mkv")
 
-    def test_stream_nese_primou_adresu_a_heslo_v_proxyheaders(self):
+    def test_stream_jde_pres_play_bez_hesla(self):
+        """Stremio pro Android `proxyHeaders` nepoužije (Discord, 2026-10-02) – heslo
+        klientovi neodchází, soubor přepošle aplikace."""
         r = router()
         r.engine.file_request = lambda url: ("http://nas.lan/dav/Filmy/a.mkv", {"Authorization": "Basic x"})
-        objekt = mapping.stream_object({"url": "dav:1:Filmy/a.mkv", "file": "a.mkv"},
+        objekt = mapping.stream_object({"url": "dav:1:Filmy/a.mkv", "file": "a.mp4"},
                                        lambda v: "/play/" + v, primy=routes._primy(r.engine))
-        self.assertEqual(objekt["url"], "http://nas.lan/dav/Filmy/a.mkv")
-        self.assertEqual(objekt["behaviorHints"]["proxyHeaders"], {"request": {"Authorization": "Basic x"}})
-        self.assertTrue(objekt["behaviorHints"]["notWebReady"])
-        self.assertIn(mapping.JEN_V_APLIKACI["cs"], objekt["description"])
+        self.assertEqual(objekt["url"], "/play/dav:1:Filmy/a.mkv")
+        self.assertNotIn("proxyHeaders", objekt["behaviorHints"])
+        self.assertNotIn("notWebReady", objekt["behaviorHints"], "mp4 přes proxy hraje i na webu")
+        self.assertNotIn("⚠️", objekt["description"])
 
-    def test_play_uz_uloziste_neobsluhuje(self):
-        """Proxy zrušená v 5.2.26 — data tečou přímo, server se jich nedotkne."""
-        odpoved = router().route("/play/" + mapping.zakoduj("dav:1:Filmy/a.mkv"), ZAKLAD)
-        self.assertEqual(odpoved.status, 410)
+    def test_play_uloziste_vrati_proxy_bez_limitu(self):
+        r = router()
+        r.engine.file_request = lambda url: ("http://nas.lan/dav/Filmy/a.mkv", {"Authorization": "Basic x"})
+        cesta = f"/c/{KOUSEK}/play/" + mapping.zakoduj("dav:1:Filmy/a.mkv")
+        for _ in range(routes.PLAY_LIMIT[0] + 5):   # přetáčení = desítky Range dotazů
+            odpoved = r.route(cesta, ZAKLAD)
+        self.assertEqual(odpoved.proxy, ("http://nas.lan/dav/Filmy/a.mkv", {"Authorization": "Basic x"}))
+
+    def test_proxy_posle_heslo_a_range(self):
+        """Celá cesta přes skutečný Handler: úložiště dostane heslo i Range, klient 206 a data."""
+        import threading
+        import urllib.error
+        import urllib.request
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from nokturno.routes import Odpoved
+        from nokturno.server import Handler
+
+        DATA = bytes(range(256)) * 4
+
+        class Uloziste(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.headers.get("Authorization") != "Basic x":
+                    self.send_response(401)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                od, do = (int(c) for c in self.headers["Range"].split("=")[1].split("-"))
+                kus = DATA[od:do + 1]
+                self.send_response(206)
+                self.send_header("Content-Range", f"bytes {od}-{do}/{len(DATA)}")
+                self.send_header("Content-Length", str(len(kus)))
+                self.end_headers()
+                self.wfile.write(kus)
+
+            def log_message(self, *a):
+                pass
+
+        up = ThreadingHTTPServer(("127.0.0.1", 0), Uloziste)
+        threading.Thread(target=up.serve_forever, daemon=True).start()
+        adresa = f"http://127.0.0.1:{up.server_address[1]}/a.mkv"
+
+        class Smerovac:
+            heslo = "Basic x"
+
+            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
+                return Odpoved(proxy=(adresa, {"Authorization": self.heslo}))
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        srv.router = Smerovac()
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        zaklad = f"http://127.0.0.1:{srv.server_address[1]}"
+        try:
+            req = urllib.request.Request(f"{zaklad}/c/abc/play/x", headers={"Range": "bytes=10-19"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                self.assertEqual(resp.status, 206)
+                self.assertEqual(resp.headers["Content-Range"], f"bytes 10-19/{len(DATA)}")
+                self.assertEqual(resp.read(), DATA[10:20])
+            srv.router.heslo = "Basic spatne"
+            with self.assertRaises(urllib.error.HTTPError) as err:
+                urllib.request.urlopen(req, timeout=5)
+            self.assertEqual(err.exception.code, 502, "odmítnuté heslo = srozumitelná chyba, ne 401")
+        finally:
+            for s in (srv, up):
+                s.shutdown()
+                s.server_close()
 
     def test_nedostupny_soubor_se_vubec_nenabidne(self):
         """Bez hlaviček by stream stejně neodehrál — lepší ho neukázat než nabídnout mrtvý."""
@@ -1053,17 +1117,16 @@ class TestVlastniUloziste(unittest.TestCase):
         r.route(f"/c/{KOUSEK}/stream/series/tmdb:333454:1:1.json", ZAKLAD)
         self.assertEqual(r.engine.dotazy[-1], ("series", "tmdb:333454:1:1"))
 
-    def test_vypis_streamu_vyda_primou_adresu(self):
-        """Celá cesta `/stream/…`: úložiště se do odpovědi dostane jako přímá adresa
-        zdroje, ostatní zdroje dál přes `/play/` (podepsaný odkaz platí jen chvíli)."""
+    def test_vypis_streamu_vse_pres_play(self):
+        """Celá cesta `/stream/…`: úložiště i ostatní zdroje přes `/play/`, adresa
+        úložiště klientovi neodchází."""
         r = router(streamy=[{**POPIS, "url": "dav:1:Filmy/a.mkv", "file": "a.mkv"},
                             {**POPIS, "url": "ws:abc", "file": "b.mkv"}])
         r.engine.file_request = lambda url: ("http://nas.lan/dav/Filmy/a.mkv", {"Authorization": "Basic x"})
         streamy = r.route(f"/c/{KOUSEK}/stream/movie/tt1.json", ZAKLAD).data["streams"]
-        self.assertEqual(streamy[0]["url"], "http://nas.lan/dav/Filmy/a.mkv")
-        self.assertIn("proxyHeaders", streamy[0]["behaviorHints"])
+        self.assertIn("/play/", streamy[0]["url"])
+        self.assertNotIn("nas.lan", streamy[0]["url"])
         self.assertIn("/play/", streamy[1]["url"])
-        self.assertNotIn("proxyHeaders", streamy[1]["behaviorHints"])
 
     def test_opakovana_selhani_prestanou_zkouset(self):
         """FastShare se při málo kreditu zkouší přihlásit znovu — u desítek souborů

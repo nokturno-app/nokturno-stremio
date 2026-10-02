@@ -33,10 +33,8 @@ až ve chvíli, kdy se na ni přehrávač skutečně obrátí — a protože nes
 prefix, rozklíčuje ho pod správným účtem.
 
 Výjimkou jsou vlastní úložiště (`dav:`) a FastShare (`fs:`): ty chtějí u každého
-požadavku autentizační hlavičku, takže se vydávají jako přímá adresa zdroje
-s `behaviorHints.proxyHeaders` (viz `mapping.stream_object`). Data pak tečou ze
-zdroje rovnou ke klientovi a tenhle server se jich nedotkne — do 5.2.25 šla přes
-něj a byl tím fakticky veřejná proxy pro cizí úložiště.
+požadavku autentizační hlavičku, kterou přehrávač nemá. `/play/` je proto nepřesměruje,
+ale soubor přepošle sám (`Odpoved.proxy`, `server.Handler._proxy`).
 """
 import html as html_lib
 import json
@@ -73,7 +71,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "9.6.0"
+VERZE = "9.6.1"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián
@@ -299,7 +297,8 @@ def klient_z_useragent(user_agent):
 class Odpoved:
     """Co server pošle klientovi."""
 
-    def __init__(self, status=200, data=None, location=None, text=None, html=None, utok=None):
+    def __init__(self, status=200, data=None, location=None, text=None, html=None, utok=None, proxy=None):
+        self.proxy = proxy   # (adresa, hlavičky) — soubor stáhne a pošle dál server sám
         # `utok` = (důvod, otisk nastavení): odmítnutí, které se nepočítá do provozu, ale
         # do přehledu „kdo na nás útočí" (provoz.py). Klientovi se neposílá.
         self.utok = utok
@@ -922,11 +921,12 @@ class Router:
             return chyba(400, "Neplatný odkaz.")
         if vnitrni.startswith(mapping.PRES_HLAVICKY):
             # Vlastní úložiště a FastShare chtějí u každého požadavku hlavičku (heslo,
-            # cookie z přihlášení). Do 5.2.25 je soubor tekl přes tenhle server, od 5.2.26
-            # se vydává přímá adresa zdroje s `behaviorHints.proxyHeaders` (viz
-            # `mapping.stream_object`) — hlavičky posílá přehrávač sám. Sem se dostane jen
-            # odkaz uložený ve starém „pokračovat ve sledování"; ten se musí načíst znovu.
-            return chyba(410, "Odkaz už neplatí – otevři titul znovu a vyber stream.")
+            # cookie z přihlášení), kterou přehrávač nemá — soubor přepošle server.
+            try:
+                return Odpoved(proxy=engine.file_request(vnitrni))
+            except NokturnoError as err:
+                _LOGGER.info("přímý odkaz %s: %s", vnitrni[:40], err)
+                return chyba(502, str(err))
         try:
             skutecna = engine.resolve(vnitrni)
         except NokturnoError as err:
@@ -1069,7 +1069,9 @@ class Router:
                 blok = Odpoved(data={"streams": [mapping.upozorneni_blokace(odp.text or "", zaklad + "/")]})
                 blok.utok = odp.utok
                 return blok
-        if kousek and casti and casti[0] == "play":
+        # přetáčení přes proxy jsou desítky Range dotazů — limit jen z internetu
+        if kousek and casti and casti[0] == "play" and (verejny or len(casti) != 2 or not
+                                                         (mapping.dekoduj(casti[1]) or "").startswith(mapping.PRES_HLAVICKY)):
             odp = self._omezit(self.play_okno, options, klient, "přehrání")
             if odp is not None:
                 return odp

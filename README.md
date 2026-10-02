@@ -42,7 +42,7 @@ Kdo chce víc – stahování, titulky z OpenSubtitles, Trakt, TV program – po
 - **Vlastní úložiště** (od 3.1.0) – až tři WebDAV složky s vlastními soubory ve formuláři (s ověřením). Soubory jsou mezi streamy první.
 - **Sedm volitelných vyhledávačů třetích stran** – WebShare, Sosáč, HellSpy, Sledujteto, FastShare / Sdilej.cz, Přehraj.to a CZtor; žádný není povinný. FastShare jde i s účtem ze Sdilej.cz ([nápověda](https://nokturno-app.github.io/nokturno-napoveda/cs/sdilej-cz)). Přehraj.to (od 7.0.4) chce ve formuláři vlastní účet jako WebShare nebo Sledujteto: bez přihlášení API nevydá token a HTML z jedné serverové adresy dostane HTTP 429.
 - **Volitelné katalogy** (od 5.1.0) – seznamy ze Sosáče a TMDB, žebříček „Nejsledovanější tento týden“; každý se zapíná zvlášť ve formuláři. Katalogy z dashboardu (sezónní a tematické, třeba Vánoce nebo Film pro dnešní den) jsou v doplňku vždy a první (od 8.4.0).
-- **Přímé přehrávání** (od 5.2.26) – vlastní úložiště a FastShare se přehrávají přímo ze zdroje (`behaviorHints.proxyHeaders` nese přihlášení), žádná proxy. Úložiště proto musí být dosažitelné ze serveru (hledání) i ze zařízení, kde se přehrává. ⚠️ Ve webovém přehrávači Stremia se tyto streamy nepřehrají, jen v aplikaci. 
+- **Přehrávání přes aplikaci** (od 9.6.1) – vlastní úložiště a FastShare chtějí přihlášení, které přehrávač Stremia nepošle (Stremio pro Android `proxyHeaders` ignoruje), proto soubor přeposílá `/play/` aplikace s `Range`. Úložiště stačí dosažitelné z aplikace. 
 - **Zprávy z dashboardu** – položka „📢 Nokturno" jako první stream, jen na instanci s `NOKTURNO_TRAFFIC_TOKEN` (v aplikaci vypnuté, zavaděč nastavuje `NOKTURNO_TRAFFIC=0`); **jazyky** čeština, slovenština, angličtina i maďarština. Formulář je česky a slovensky, nastavení ze slovenského formuláře má slovensky i hlášky doplňku.
 
 | | |
@@ -157,7 +157,7 @@ Hodnoty jsou stejné jako v doplňku pro Kodi, takže se dají opsat z jeho
 | `NOKTURNO_STREAMUJ_USERNAME`, `NOKTURNO_STREAMUJ_PASSWORD` | Streamuj, kvůli Sosáči; místo hesla i hotový `md5(md5(heslo))` |
 | ~~`NOKTURNO_LUNA_URL`, `NOKTURNO_LUNA_TOKEN`~~ | od 0.2.5 se nečtou – Luna má vlastní doplněk do Stremia |
 | `NOKTURNO_ST_EMAIL`, `NOKTURNO_ST_PASSWORD` | Sledujteto – hledání chce účet, přehrávání Premium |
-| `NOKTURNO_FS_USERNAME`, `NOKTURNO_FS_PASSWORD` | FastShare (od 5.1.0) – hledá se i bez účtu, přehrání jde z kreditu nebo neomezeného tarifu. Soubor si přehrávač stáhne přímo, cookie z přihlášení nese `behaviorHints.proxyHeaders` |
+| `NOKTURNO_FS_USERNAME`, `NOKTURNO_FS_PASSWORD` | FastShare (od 5.1.0) – hledá se i bez účtu, přehrání jde z kreditu nebo neomezeného tarifu. Soubor přeposílá aplikace přes `/play/` s cookie z přihlášení |
 | `NOKTURNO_FS_PROVIDER` | `sdilej` = účet výš je ze Sdilej.cz (týž katalog, jiné účty); prázdné = FastShare |
 | `NOKTURNO_PT_EMAIL`, `NOKTURNO_PT_PASSWORD` | Přehraj.to (od 7.0.4) – s Premium účtem přijde původní soubor, bez něj jen překódovaný. Na veřejné instanci se nenastavuje: účet je per-uživatel ve formuláři, jako u ostatních zdrojů |
 | `NOKTURNO_TMDB_KEY` | klíč TMDB instance pro katalogy TMDB (od 5.1.0); bez něj se nabízejí jen katalogy Sosáče. Ve formuláři se nezadává |

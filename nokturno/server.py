@@ -16,7 +16,9 @@ import ssl
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .config import decode, fingerprint, from_environ, sources_summary
@@ -29,7 +31,7 @@ from .routes import Blokace, VERZE, Odpoved, Router, jazyk_z_hlavicky, klient_z_
 from .statistiky import Statistiky
 from .pady import Pady
 from .provoz import Provoz
-from . import cztor, kliky as kliky_zprav, soukroma, tls
+from . import cztor, kliky as kliky_zprav, sit, soukroma, tls
 
 _LOGGER = logging.getLogger("nokturno")
 
@@ -265,6 +267,64 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Headers", "*")
 
+    def _proxy(self, url, hlavicky):
+        """Soubor z vlastního úložiště nebo FastShare přes aplikaci – s hlavičkou, kterou přehrávač nemá.
+
+        Přeposílá `Range`, takže přetáčení funguje a nic se nestahuje celé dopředu.
+        Heslo ani adresa úložiště klientovi neodejdou, dostane jen data.
+        """
+        pozadavek = dict(hlavicky)
+        for jmeno in ("Range", "If-Range"):
+            if self.headers.get(jmeno):
+                pozadavek[jmeno] = self.headers[jmeno]
+        # bez komprese: tělo se přeposílá po kouscích tak, jak přijde
+        pozadavek.setdefault("Accept-Encoding", "identity")
+        req = urllib.request.Request(url, headers=pozadavek, method="HEAD" if self.command == "HEAD" else "GET")
+        # z internetu jen hlídaným openerem: úložiště může přesměrovat dovnitř sítě
+        otevri = sit.OPENER.open if getattr(self, "_verejny", True) else urllib.request.urlopen
+        try:
+            upstream = otevri(req, timeout=30)
+        except urllib.error.HTTPError as err:
+            upstream = err     # 416 a spol. patří klientovi, jen 401/403 se přeloží
+        except Exception as err:  # noqa: BLE001 – síť, DNS, zakázaná adresa
+            _LOGGER.info("úložiště neodpovídá: %s", err)
+            self._posli(Odpoved(status=502, text="Úložiště neodpovídá."))
+            return
+        with upstream:
+            status = getattr(upstream, "status", None) or upstream.code
+            if status in (401, 403):
+                self._posli(Odpoved(status=502, text="Úložiště odmítlo jméno nebo heslo."))
+                return
+            self.send_response(status)
+            self._odeslano = True   # chyba odteď nesmí poslat druhou odpověď do téhož spojení
+            for jmeno in ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges",
+                          "Last-Modified", "ETag"):
+                if upstream.headers.get(jmeno):
+                    self.send_header(jmeno, upstream.headers[jmeno])
+            if not upstream.headers.get("Content-Length"):
+                self.close_connection = True   # bez délky jde konec poznat jen zavřením
+            self._cors()
+            self.end_headers()
+            if self.command == "HEAD":
+                return
+            while True:
+                try:
+                    kus = upstream.read(256 * 1024)
+                except OSError as err:
+                    # úložiště uprostřed souboru přestalo posílat – přehrávač se připojí znovu s Range
+                    _LOGGER.info("úložiště přestalo posílat data: %s", err)
+                    self.close_connection = True
+                    return
+                if not kus:
+                    break
+                try:
+                    self.wfile.write(kus)
+                    self._zapsano += len(kus)
+                except TimeoutError:
+                    # přehrávač přestal číst déle než `timeout` (pauza, plný buffer) – jako zavřené spojení
+                    self.close_connection = True
+                    return
+
     def _posli(self, odpoved):
         self._utok = getattr(odpoved, "utok", None)
         telo, typ = odpoved.body
@@ -303,9 +363,13 @@ class Handler(BaseHTTPRequestHandler):
             self._verejny = verejny
             jazyk = jazyk_z_hlavicky(self.headers.get("Accept-Language"))
             aplikace = klient_z_useragent(self.headers.get("User-Agent"))
-            self._posli(self.server.router.route(self.path, self._zaklad(), verejny=verejny, jazyk=jazyk,
-                                                 klient=self._klient(), aplikace=aplikace,
-                                                 z_proxy=soukroma.z_proxy(self.headers)))
+            odpoved = self.server.router.route(self.path, self._zaklad(), verejny=verejny, jazyk=jazyk,
+                                               klient=self._klient(), aplikace=aplikace,
+                                               z_proxy=soukroma.z_proxy(self.headers))
+            if getattr(odpoved, "proxy", None):
+                self._proxy(*odpoved.proxy)
+            else:
+                self._posli(odpoved)
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, ssl.SSLError):
             # přehrávač si to rozmyslel a zavřel spojení — běžné, ne chyba
             _LOGGER.debug("klient zavřel spojení při %s", bezpecna_cesta(self.path))

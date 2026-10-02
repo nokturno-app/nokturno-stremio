@@ -47,16 +47,12 @@ NE_PRO_WEB = (".mkv", ".avi", ".ts", ".m2ts", ".wmv", ".flv")
 SCHEMATA = ("ws:", "hs:", "st:", "fs:", "dav:", "streamuj:", "pt:", "cz:")
 PRIME = ("http://", "https://")
 # Zdroje, které chtějí u každého požadavku autentizační hlavičku (FastShare cookie
-# z přihlášení, vlastní úložiště Basic auth). Vydávají se jako přímá adresa zdroje
-# s `behaviorHints.proxyHeaders` — hlavičky pošle přehrávač Stremia sám a data tečou
-# rovnou ze zdroje ke klientovi, ne přes tenhle server.
+# z přihlášení, vlastní úložiště Basic auth). Soubor teče přes `/play/` této aplikace
+# (`server.Handler._proxy`), která hlavičku přidá sama. Od 5.2.26 do 9.5.4 se vydávala
+# přímá adresa s `behaviorHints.proxyHeaders`, jenže Stremio pro Android hlavičky
+# nepošle a úložiště odmítne (Discord, 2026-10-02). Veřejná proxy to od 9.0.0 není:
+# aplikace běží u uživatele a přeposílá jen jeho vlastní úložiště.
 PRES_HLAVICKY = ("dav:", "fs:")
-# `proxyHeaders` platí jen u streamu označeného `notWebReady` a webový přehrávač
-# takový stream odmítne rovnou (`stremio-video/src/HTMLVideo.js`, `canPlayStream()`).
-# Poznat prohlížeč na serveru nejde (viz `routes.klient_z_useragent`), proto se to
-# píše rovnou do popisu streamu.
-JEN_V_APLIKACI = {"cs": "⚠️ Ve webovém přehrávači se nepřehraje – jen v aplikaci",
-                  "sk": "⚠️ Vo webovom prehrávači sa neprehrá – len v aplikácii"}
 
 
 def odkaz_streamu(vnitrni, odkaz):
@@ -166,12 +162,9 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
     if not vnitrni:
         return None
 
-    hlavicky = None
-    if vnitrni.startswith(PRES_HLAVICKY):
-        primo = primy(vnitrni) if primy else None
-        if not primo:
-            return None
-        adresa, hlavicky = primo
+    # bez platného účtu (nenastavený, vypršelý, málo kreditu) se stream nenabídne
+    if vnitrni.startswith(PRES_HLAVICKY) and not (primy and primy(vnitrni)):
+        return None
 
     kvalita = popis.get("quality") or ""
     zdroj = popis.get("source") or ""
@@ -204,8 +197,6 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
         radek_udaju.append(f"🌐 {zdroj}")
 
     radky = [nazev_souboru, "  ".join(radek_jazyku), "  ".join(radek_udaju)]
-    if hlavicky:
-        radky.append(JEN_V_APLIKACI.get(jazyk, JEN_V_APLIKACI["cs"]))
 
     # vlevo v úzkém sloupci je místo jen na jméno a kvalitu; HDR/DV k ní patří,
     # protože rozhoduje o tom, jestli má smysl sahat po velkém souboru. Soubor s DV
@@ -213,7 +204,7 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
     znacky = [z for z in obraz if z == "DV"] + hdr or obraz[:1]
     vlevo = kvalita + (" " + " ".join(znacky) if znacky else "")
     objekt = {
-        "url": adresa if hlavicky else odkaz_streamu(vnitrni, odkaz),
+        "url": odkaz_streamu(vnitrni, odkaz),
         # bez „Nokturno“ nad kvalitou – v úzkém sloupci jen ubíral místo; doplněk
         # pozná uživatel podle loga, prázdné jméno Stremio neukáže
         "name": vlevo or zdroj or "Nokturno",
@@ -226,11 +217,8 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
         objekt["behaviorHints"]["videoSize"] = velikost
     if nazev_souboru:
         objekt["behaviorHints"]["filename"] = nazev_souboru
-    if nazev_souboru.lower().endswith(NE_PRO_WEB) or hlavicky:
+    if nazev_souboru.lower().endswith(NE_PRO_WEB):
         objekt["behaviorHints"]["notWebReady"] = True
-    if hlavicky:
-        # bez `notWebReady` Stremio `proxyHeaders` ignoruje (viz addon SDK)
-        objekt["behaviorHints"]["proxyHeaders"] = {"request": dict(hlavicky)}
     # aby „další díl“ držel stejný zdroj i kvalitu jako ten, co uživatel pustil
     if kvalita:
         objekt["behaviorHints"]["bingeGroup"] = f"nokturno-{zdroj}-{kvalita}".replace(" ", "-").lower()

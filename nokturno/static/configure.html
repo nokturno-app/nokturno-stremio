@@ -1686,7 +1686,10 @@ function nactiProfily(akce = "/profily", telo = {}) {
       li.append(a, info, smazat);
       ul.append(li);
     }
-  }).catch(() => {});
+  }).catch(() => {
+    // seznam profilů nejde načíst (aplikace za proxy, výpadek): radši ukázat formulář než prázdnou stránku
+    document.body.classList.remove("vyber-profilu");
+  });
 }
 $("profil-jmeno").addEventListener("change", () => {
   if (profil) nactiProfily("/profil/jmeno", { klic: profil, jmeno: $("profil-jmeno").value });

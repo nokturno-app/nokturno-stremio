@@ -531,6 +531,9 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
     if os.environ.get("NOKTURNO_SOUKROMA", "").strip().lower() in ("1", "true", "ano", "yes"):
         server.router.povolena = soukroma.Povolena(data_dir)
         _LOGGER.info("soukromá instance: povolená nastavení v %s", server.router.povolena.cesta)
+    server.router.sdilena = os.environ.get("NOKTURNO_SDILENA", "").strip().lower() in ("1", "true", "ano", "yes")
+    if server.router.sdilena:
+        _LOGGER.info("sdílená instance: nastavení a ukládání profilů i z internetu")
     server.router.public_url = verejna_adresa(os.environ.get("NOKTURNO_PUBLIC_URL", ""))
     if server.router.public_url:
         _LOGGER.info("veřejná adresa doplňku: %s", server.router.public_url)

@@ -3279,6 +3279,27 @@ class TestProfily(unittest.TestCase):
         self.assertTrue(self.r.povolena.obsahuje(soukroma.otisk(config.decode(KOUSEK))))
         self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 200)
 
+    def test_sdilena_instance_pusti_formular_ne_spravu(self):
+        from nokturno import soukroma
+        self.r.povolena = soukroma.Povolena(self.tmp.name)
+        cf = {"X-Nokturno": "1", "Cf-Connecting-IP": "1.2.3.4"}
+        telo = json.dumps({"nastaveni": KOUSEK})
+        # bez volby sdilena: z internetu nic
+        self.assertEqual(self.r.route("/configure", ZAKLAD, z_proxy=True).status, 403)
+        self.assertEqual(self.r.post("/profil", telo, cf, zaklad=ZAKLAD).status, 403)
+        self.r.sdilena = True
+        self.assertEqual(self.r.route("/configure", ZAKLAD, z_proxy=True).status, 200)
+        d = self.r.post("/profil", telo, cf, zaklad=ZAKLAD)
+        self.assertEqual(d.status, 200)
+        klic = d.data["klic"]
+        self.assertEqual(self.r.route(f"/c/{klic}/configure", ZAKLAD, z_proxy=True).status, 200)
+        self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD, z_proxy=True).status, 200)
+        self.assertIn('"sprava": false', self.r.route("/configure", ZAKLAD, z_proxy=True).html)
+        # seznam, přejmenování, mazání a povolování dál jen mimo proxy
+        for cesta in ("/profily", "/profil/jmeno", "/profil/smazat", "/povolit"):
+            self.assertEqual(self.r.post(cesta, json.dumps({"klic": klic}), cf).status, 403, cesta)
+        self.assertEqual(self.r.route("/aktualizace", ZAKLAD, z_proxy=True).status, 403)
+
     def test_qr_svg(self):
         from nokturno import profily
         svg = profily.qr_svg("https://x")

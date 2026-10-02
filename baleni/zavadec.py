@@ -158,6 +158,7 @@ def prostredi(volby, data, beh=None):
         "NOKTURNO_BEH": beh or druh_behu(),
         "NOKTURNO_HOST": str(volby.get("host") or "0.0.0.0"),
         "NOKTURNO_SOUKROMA": "1" if volby.get("soukroma") else "0",
+        "NOKTURNO_SDILENA": "1" if volby.get("sdilena") else "0",
         "NOKTURNO_PUBLIC_URL": str(volby.get("public_url") or "").strip(),
         "NOKTURNO_PORT": str(volby.get("port") or 7140),
         "NOKTURNO_DATA": os.path.join(data, "cache"),

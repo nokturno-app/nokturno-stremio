@@ -220,6 +220,26 @@ def vlastni_katalogy(value):
     return [c for c in (_vk_jeden(x) for x in value[:VK_MAX]) if c]
 
 
+VK_PREDVOLBY_SK = {"Populární": "Populárne", "Nejlépe hodnocené": "Najlepšie hodnotené",
+                   "Nové s CZ dabingem": "Nové s CZ dabingom", "Filmy ve vysoké kvalitě": "Filmy vo vysokej kvalite"}
+
+
+def vychozi_vlastni_katalogy(jazyk="cs"):
+    """Předvolby vlastních katalogů (`mycat.PRESETS`) v tvaru `vk` – předvyplní se jen v novém profilu,
+    uživatel je ve formuláři upraví nebo smaže jako každý jiný katalog."""
+    out = []
+    for _pid, kind, nazev, pole in mycat_lib.PRESETS:
+        c = {"n": VK_PREDVOLBY_SK.get(nazev, nazev) if jazyk == "sk" else nazev, "t": kind, "s": pole["sort"]}
+        if pole.get("lang"):
+            c["l"] = pole["lang"]
+        if pole.get("years"):
+            c["posl"] = pole["years"]
+        if pole.get("verify"):
+            c.update(ov=1, z=pole.get("show", "found"), q=pole.get("q", 0), a=pole.get("audio", ""))
+        out.append(c)
+    return vlastni_katalogy(out)
+
+
 def vk_parametry(c):
     """Čistý katalog → parametry `DashApi.discover` (jako `mycat_params` v Kodi)."""
     year_from, year_to = c.get("od") or "", c.get("do") or ""

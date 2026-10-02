@@ -626,12 +626,14 @@ class Router:
         except OSError:
             return chyba(500, "Formulář nastavení chybí.")
         soucasne = self._nastaveni(kousek) if kousek else None
+        novy = soucasne is None   # nový profil: předvyplní se předvolby vlastních katalogů, stávající zůstává beze změny
         if soucasne is None and self.predvyplnit and not verejny:
             soucasne = self.enginy.vychozi_options
         # hodnoty z adresy jsou od kohokoli — do <script> jen escapované (viz json_do_scriptu)
         html = html.replace("__NASTAVENI__", mapping.json_do_scriptu(soucasne or {}))
         nabidka = self.katalogy.formular(jazyk) if self.katalogy else []
         html = html.replace("__KATALOGY__", mapping.json_do_scriptu(nabidka))
+        html = html.replace("__VYCHOZI_VK__", mapping.json_do_scriptu(config.vychozi_vlastni_katalogy(jazyk) if novy else []))
         # adresa doplňku: v síti HTTPS přes local-ip.co (Stremio jinak http z LAN nevezme)
         doplnek = self._zaklad_doplnku(zaklad)
         html = html.replace("__ZAKLAD_DOPLNKU__", html_lib.escape(doplnek, quote=True))

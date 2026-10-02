@@ -836,6 +836,25 @@ class TestKatalogy(unittest.TestCase):
         self.assertNotIn("dabing", nabidka)
         self.assertNotIn("tmdb.trendy.filmy", html, "bez klíče TMDB se jeho katalogy nenabízejí")
 
+    def test_novy_profil_ma_predvolby_vlastnich_katalogu(self):
+        """Nový profil dostane předvolby (`mycat.PRESETS`) předvyplněné ve vlastních katalozích, existující beze změny."""
+        import json
+        from nokturno import config
+
+        def vychozi(html):
+            radek = next(r for r in html.splitlines() if r.startswith("const VYCHOZI_VK = "))
+            return json.loads(radek[len("const VYCHOZI_VK = "):].split(";   //")[0])
+        self.assertEqual(len(vychozi(self.r.route("/configure", ZAKLAD).html)), 9)
+        nove = vychozi(self.r.route("/configure", ZAKLAD).html)
+        self.assertEqual([c["n"] for c in nove if c["t"] == "series"],
+                         ["Populární", "Nejlépe hodnocené", "Nové s CZ dabingem", "České seriály"])
+        hq = next(c for c in nove if c["n"] == "Filmy ve vysoké kvalitě")
+        self.assertEqual((hq["ov"], hq["q"], hq["z"]), (1, "4", "found"))
+        self.assertEqual(sum(1 for c in nove if c.get("ov")), 3)
+        self.assertEqual(config.vlastni_katalogy(nove), nove)
+        self.assertEqual(vychozi(self.r.route("/configure", ZAKLAD, jazyk="sk").html)[0]["n"], "Populárne")
+        self.assertEqual(vychozi(self.r.route(f"/c/{KOUSEK}/configure", ZAKLAD).html), [])
+
     def test_formular_nabizi_jen_doporucene_ale_stare_dal_funguji(self):
         """2026-09-15: nabídka sjednocená s Kodi menu (`DOPORUCENE`) — starší
         katalogy z `SEZNAM` (např. „Nejpopulárnější filmy“) se novým uživatelům

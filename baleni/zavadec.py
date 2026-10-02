@@ -681,6 +681,7 @@ def main(argv=None):
     try:
         z.bez()
     except KeyboardInterrupt:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)   # další Ctrl+C nepřeruší zastavení doplňku
         z.konec.set()
         z.zastav()
     return 0

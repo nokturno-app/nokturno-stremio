@@ -71,7 +71,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "9.7.0"
+VERZE = "9.7.1"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián
@@ -428,9 +428,10 @@ class Router:
     # --- soukromá instance a volby aplikace --------------------------------
     STRANKY = ("", "/", "/configure", "/configure/", "/check")
     # sdílená instance (`"sdilena": true`): z internetu i formulář a uložení profilu, pro kamarády;
-    # seznam, přejmenování a mazání profilů, povolování a aktualizace dál jen mimo proxy
+    # včetně výběru, přejmenování a mazání profilů; povolování a aktualizace dál jen mimo proxy
     sdilena = False
     FORMULAR = ("/configure", "/configure/", "/check")
+    PROFILY_CESTY = ("/profil", "/profily", "/profil/jmeno", "/profil/smazat")
 
     def _formular(self, cesta):
         if cesta in ("/configure", "/configure/") or cesta.startswith("/cztor/"):
@@ -498,7 +499,7 @@ class Router:
         preflight, který neprojde (CORS tu není), takže jiná stránka v prohlížeči majitele
         nastavení nezmění."""
         cesta = cesta.partition("?")[0]
-        if not headers.get("X-Nokturno") or (soukroma.z_proxy(headers) and not (self.sdilena and cesta == "/profil")):
+        if not headers.get("X-Nokturno") or (soukroma.z_proxy(headers) and not (self.sdilena and cesta in self.PROFILY_CESTY)):
             return Odpoved(status=403, text="")
         if cesta == "/povolit":
             if self.povolena is None:
@@ -637,7 +638,7 @@ class Router:
         html = html.replace("__PROFIL__", kousek if profily.je_klic(kousek or "") and soucasne is not None else "")
         html = html.replace("__VERZE__", self.verze)
         html = html.replace("__ID__", self._identita_pro_formular(soucasne, klient))
-        html = html.replace("__APLIKACE__", mapping.json_do_scriptu({**self.aplikace(), "sprava": not z_proxy}))
+        html = html.replace("__APLIKACE__", mapping.json_do_scriptu({**self.aplikace(), "sprava": not z_proxy, "profily": not z_proxy or self.sdilena}))
         return Odpoved(html=html)
 
     def instalace(self, kousek, zaklad, jazyk):

@@ -3294,10 +3294,13 @@ class TestProfily(unittest.TestCase):
         klic = d.data["klic"]
         self.assertEqual(self.r.route(f"/c/{klic}/configure", ZAKLAD, z_proxy=True).status, 200)
         self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD, z_proxy=True).status, 200)
-        self.assertIn('"sprava": false', self.r.route("/configure", ZAKLAD, z_proxy=True).html)
-        # seznam, přejmenování, mazání a povolování dál jen mimo proxy
-        for cesta in ("/profily", "/profil/jmeno", "/profil/smazat", "/povolit"):
-            self.assertEqual(self.r.post(cesta, json.dumps({"klic": klic}), cf).status, 403, cesta)
+        html = self.r.route("/configure", ZAKLAD, z_proxy=True).html
+        self.assertIn('"sprava": false', html)
+        self.assertIn('"profily": true', html)
+        # výběr a správa profilů jde, povolování a aktualizace ne
+        self.assertEqual(self.r.post("/profily", "{}", cf).status, 200)
+        self.assertEqual(self.r.post("/profil/jmeno", json.dumps({"klic": klic, "jmeno": "Kamarád"}), cf).status, 200)
+        self.assertEqual(self.r.post("/povolit", KOUSEK, cf).status, 403)
         self.assertEqual(self.r.route("/aktualizace", ZAKLAD, z_proxy=True).status, 403)
 
     def test_qr_svg(self):

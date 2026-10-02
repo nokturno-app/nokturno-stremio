@@ -288,7 +288,7 @@
     <li><a href="#otazky"><b>?</b>Časté otázky</a></li>
   </ul>
 
-  <!-- uložené profily: jen pro majitele aplikace (sprava), pole bez `name` – do nastavení nepatří -->
+  <!-- uložené profily: majitel aplikace, na sdílené instanci všichni (APLIKACE.profily), pole bez `name` – do nastavení nepatří -->
   <section id="profily" hidden>
     <div class="karta">
       <div class="karta-hlava"><h3>Profily</h3><span><a href="#" id="profily-vse" hidden>← Všetky profily</a></span></div>
@@ -1656,7 +1656,7 @@ if (APLIKACE.sprava && APLIKACE.soukroma) {
 }
 // --- uložené profily (jen správa mimo proxy) ---
 function nactiProfily(akce = "/profily", telo = {}) {
-  if (!APLIKACE.sprava) return Promise.resolve();
+  if (!APLIKACE.profily) return Promise.resolve();
   return posliServeru(akce, JSON.stringify(telo)).then((d) => {
     const ul = $("seznam-profilu"), seznam = d.profily || [];
     // výběr profilu (holé /configure s uloženými profily) = jen seznam; jinak jen název a cesta zpět
@@ -1707,7 +1707,7 @@ $("zalozit").addEventListener("click", zalozProfil);
 $("novy-jmeno").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); zalozProfil(); } });
 $("novy-jmeno").addEventListener("input", () => { $("zalozit-chyba").hidden = true; });
 $("profily-vse").addEventListener("click", (e) => { e.preventDefault(); location.href = ZAKLAD + "/configure"; });
-const VYBER = APLIKACE.sprava && !profil && !Object.keys(soucasne).length;
+const VYBER = APLIKACE.profily && !profil && !Object.keys(soucasne).length;
 if (VYBER) document.body.classList.add("vyber-profilu");   // hned, ať formulář neproblikne
 nactiProfily();
 

@@ -354,19 +354,32 @@ class TestPrevod(unittest.TestCase):
         objekt = mapping.stream_object(
             {**POPIS, "file": "Titanic.2160p.REMUX.DV.HDR.TrueHD.Atmos.mkv", "quality": "4K"},
             lambda u: u)
-        self.assertEqual(objekt["name"], "4K DV HDR", "obraz patří vlevo ke kvalitě")
+        self.assertEqual(objekt["name"], "4K DV • HDR", "obraz patří vlevo ke kvalitě")
         self.assertIn("Atmos", objekt["description"])
         self.assertIn("TrueHD", objekt["description"])
 
     def test_dv_s_hdr10_ukaze_oboji(self):
         """Samsung Dolby Vision neumí – soubor s DV i HDR10 musí být poznat."""
-        for soubor, cekane in (("Masters.Of.The.Universe.2026.2160p.AMZN.CZ SK WEB-DL.DV.HDR10 .mkv", "4K DV HDR10"),
-                               ("Film.2160p.DV.HDR10+.mkv", "4K DV HDR10+"),
+        for soubor, cekane in (("Masters.Of.The.Universe.2026.2160p.AMZN.CZ SK WEB-DL.DV.HDR10 .mkv", "4K DV • HDR10"),
+                               ("Film.2160p.DV.HDR10+.mkv", "4K DV • HDR10+"),
                                ("Film.2160p.HDR10Plus.mkv", "4K HDR10+"),
                                ("Film.2160p.HDR10.mkv", "4K HDR10"),
                                ("Film.2160p.REMUX.mkv", "4K REMUX")):
             objekt = mapping.stream_object({**POPIS, "file": soubor, "quality": "4K"}, lambda u: u)
             self.assertEqual(objekt["name"], cekane, soubor)
+
+    def test_nahravka_z_kina_ma_znacku_cam(self):
+        objekt = mapping.stream_object({**POPIS, "lowq": True}, lambda u: u)
+        self.assertEqual(objekt["name"], "🎥 CAM\nFull HD")
+
+    def test_kodek_obrazu_v_popisu(self):
+        objekt = mapping.stream_object({**POPIS, "vcodec": "HEVC"}, lambda u: u)
+        self.assertIn("🎞 HEVC  🔊 ", objekt["description"])
+        self.assertNotIn("🎞", mapping.stream_object(POPIS, lambda u: u)["description"])
+
+    def test_vlajka_cinstiny(self):
+        objekt = mapping.stream_object({**POPIS, "langs": ["CN"], "channels": {}}, lambda u: u)
+        self.assertIn("🇨🇳", objekt["description"])
 
     def test_delka_streamu(self):
         objekt = mapping.stream_object({**POPIS, "length_min": 194}, lambda u: u)

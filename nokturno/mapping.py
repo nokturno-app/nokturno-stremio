@@ -22,7 +22,7 @@ VLAJKY = {
     "CZ": "🇨🇿", "SK": "🇸🇰", "EN": "🇬🇧", "DE": "🇩🇪", "PL": "🇵🇱", "HU": "🇭🇺",
     "FR": "🇫🇷", "ES": "🇪🇸", "IT": "🇮🇹", "RU": "🇷🇺", "UA": "🇺🇦", "JP": "🇯🇵",
     "KR": "🇰🇷", "DK": "🇩🇰", "NL": "🇳🇱", "NO": "🇳🇴", "SE": "🇸🇪", "FI": "🇫🇮",
-    "PT": "🇵🇹", "TR": "🇹🇷", "RO": "🇷🇴", "BG": "🇧🇬", "GR": "🇬🇷",
+    "PT": "🇵🇹", "TR": "🇹🇷", "RO": "🇷🇴", "BG": "🇧🇬", "GR": "🇬🇷", "CN": "🇨🇳",
 }
 
 # značky obrazu a zvuku, které jádro nezná — leží jen v názvu souboru
@@ -176,6 +176,8 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
     # řádek jazyků: vlaječky zvuku, za nimi titulky
     jazyky = _jazyky_s_kanaly(popis)
     radek_jazyku = []
+    if popis.get("vcodec"):
+        radek_jazyku.append("🎞 " + popis["vcodec"])
     if jazyky:
         radek_jazyku.append("🔊 " + "  ".join(jazyky))
     if zvuk_navic:
@@ -202,7 +204,10 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
     # protože rozhoduje o tom, jestli má smysl sahat po velkém souboru. Soubor s DV
     # i HDR10 ukáže obojí – na TV bez Dolby Vision (Samsung) hraje jako HDR10.
     znacky = [z for z in obraz if z == "DV"] + hdr or obraz[:1]
-    vlevo = kvalita + (" " + " ".join(znacky) if znacky else "")
+    vlevo = kvalita + (" " + " • ".join(znacky) if znacky else "")
+    # nahrávka z kina je vždy vidět: první řádek CAM, pod ním kvalita
+    if popis.get("lowq"):
+        vlevo = "🎥 CAM" + ("\n" + vlevo if vlevo else "")
     objekt = {
         "url": odkaz_streamu(vnitrni, odkaz),
         # bez „Nokturno“ nad kvalitou – v úzkém sloupci jen ubíral místo; doplněk

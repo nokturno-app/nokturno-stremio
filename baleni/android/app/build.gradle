@@ -5,7 +5,7 @@ plugins {
 
 // verze z doplňku (nokturno/routes.py), číslo verze pro Android z ní
 def verze = (new File(rootDir, "../../nokturno/routes.py").text =~ /(?m)^VERZE = "([^"]+)"/)[0][1]
-def cisla = verze.tokenize(".").collect { it as int } + [0, 0, 0]
+def cisla = verze.tokenize(".").collect { (it =~ /^\d+/)[0] as int } + [0, 0, 0]   // „0b1“ (beta) → 0
 def kod = cisla[0] * 1000000 + cisla[1] * 1000 + cisla[2]
 
 android {

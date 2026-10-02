@@ -629,14 +629,65 @@ class TestVlastniKatalogy(unittest.TestCase):
     def test_validace_zahodi_nesmysly(self):
         raw = [{"n": "  Pohádky  CZ ", "t": "movie", "g": [16, "x"], "k": ["fairy", "zlo"], "l": "cs|sk",
                 "od": "1990", "do": "3000", "s": "nic", "j": "or"},
-               {"n": "", "t": "movie"}, "nesmysl"] + [{"n": f"K{i}"} for i in range(9)]
+               {"n": "", "t": "movie"}, "nesmysl"] + [{"n": f"K{i}"} for i in range(30)]
         vk = config.vlastni_katalogy(json.dumps(raw))
-        self.assertEqual(len(vk), 3)   # strop 5 se počítá ze vstupu, prázdný název a nesmysl vypadnou
+        self.assertEqual(len(vk), config.VK_MAX - 2)   # strop se počítá ze vstupu, prázdný název a nesmysl vypadnou
         self.assertEqual(vk[0], {"n": "Pohádky CZ", "t": "movie", "g": [], "k": ["fairy"], "j": "or",
                                  "l": "cs|sk", "od": "1990"})
         self.assertEqual(config.vk_parametry(vk[0]), {"with_keywords": "3205|329731|358931|351899",
                                                       "with_original_language": "cs|sk", "year_from": "1990"})
         self.assertEqual(config.vlastni_katalogy("{rozbite"), [])
+
+    def test_overovani_pole_a_posledni_roky(self):
+        from datetime import datetime
+        raw = [{"n": "A", "t": "movie", "posl": 3, "od": "1990", "ov": 1, "q": 3.5, "a": "CZ|SK", "ti": "XX",
+                "ch": 1, "z": "released"},
+               {"n": "B", "t": "movie", "posl": 99, "z": "blbost"}]
+        vk = config.vlastni_katalogy(json.dumps(raw))
+        self.assertEqual(vk[0]["posl"], 3)
+        self.assertNotIn("od", vk[0])
+        self.assertEqual(vk[0]["q"], "3.5")
+        self.assertEqual(vk[0]["a"], "CZ|SK")
+        self.assertNotIn("ti", vk[0])
+        self.assertEqual(vk[0]["z"], "released")
+        self.assertNotIn("posl", vk[1])
+        self.assertNotIn("z", vk[1])
+        self.assertEqual(config.vk_parametry(vk[0])["year_from"], str(datetime.now().year - 2))
+
+    def test_overovani_krok_ukaze_jen_ok(self):
+        import contextlib
+        import tempfile
+        from nokturno.overovani import Overovani
+
+        class Engine:
+            def background(self):
+                return contextlib.nullcontext()
+
+            def verify_title(self, ctype, item_id, *a, **kw):
+                return item_id.endswith("0000")
+
+        class Enginy:
+            def pro(self, options):
+                return Engine()
+
+        options = config.from_mapping({"vk": [{"n": "A", "t": "movie", "ov": 1, "z": "found"}]})
+        kousek = config.encode(options)
+
+        class Profily:
+            def seznam(self):
+                return [{"klic": "p1"}]
+
+            def nacti(self, klic):
+                return kousek
+
+        dash = self.Dash(stran=1, na_strane=3)
+        with tempfile.TemporaryDirectory() as d:
+            ov = Overovani(d, Enginy(), dash, Profily())
+            cat = config.vlastni_katalogy(options["vk"])[0]
+            for _ in range(2):
+                self.assertTrue(ov.krok())
+            vis = ov.polozky(config.decode(kousek), cat)
+            self.assertEqual([m["id"] for m in vis], ["tt0010000"])
 
     def test_v_adrese_stabilni_retezec(self):
         a = config.from_mapping({"vk": [{"t": "series", "n": "Krimi", "g": [80]}]})

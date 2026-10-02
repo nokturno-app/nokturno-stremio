@@ -22,7 +22,8 @@ i pořadí počítá server. Složku Stremio neumí, takže podkategorie jdou ja
 katalogy s názvem „Vánoce: Komedie“.
 
 Vlastní katalogy (od 8.5.0): uživatel si ve formuláři poskládá až pět katalogů z žánrů, jazyka,
-let a řazení (volba `vk`, viz `config.vlastni_katalogy`). Jdou v manifestu hned za katalogy
+let a řazení (volba `vk`, viz `config.vlastni_katalogy`; s volbou `ov` jen tituly se streamem podle
+požadavků, ověřuje je `overovani.py` na pozadí). Jdou v manifestu hned za katalogy
 z dashboardu, tituly skládá dashboard (`DashApi.discover`, stránka po 20 titulech, cache 12 h
 sdílená podle parametrů, ne podle uživatele). Stremio stránkuje po 100, proto se na jeden
 dotaz stáhne tolik stránek dashboardu, kolik je potřeba.
@@ -134,6 +135,7 @@ class Katalogy:
         self.tmdb = TmdbApi(tmdb_key, cache=self.store) if str(tmdb_key or "").strip() else None
         self.trend = TrendApi(cache=self.store)
         self.dash = dash   # DashApi, None = katalogy z dashboardu se nenabízejí
+        self.overovani = None   # `overovani.Overovani` (server ho připojí); bez něj se `ov` ignoruje
 
     def dostupne(self):
         # TMDB bez vlastního klíče: tituly skládá dashboard (`DashApi.discover`)
@@ -203,6 +205,11 @@ class Katalogy:
             cat = vlastni[int(poradi)] if poradi.isdigit() and int(poradi) < len(vlastni) else None
             if cat is None or cat["t"] != typ:
                 return None
+            if cat.get("ov") and self.overovani is not None:
+                # jen tituly, které ověřování označilo za vyhovující; plní se postupně na pozadí
+                skip = max(0, int(skip or 0))
+                metas = self.overovani.polozky(options, cat)
+                return [p for p in (nahled(typ, m) for m in metas) if p][skip:skip + STRANKA_VK]
             try:
                 return self._vlastni_polozky(typ, cat, max(0, int(skip or 0)))
             except Exception as err:  # noqa: BLE001 – výpadek dashboardu = prázdný katalog

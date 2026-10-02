@@ -21,12 +21,14 @@ podepsaný odkaz rovnou na WebShare, který jde přehrát odkudkoli. Klíče Lun
 z prostředí ani z adresy nepřebírají; starší adresy, které je nesou, fungují dál.
 """
 import base64
+import datetime
 import json
 import os
 import re
 
 from .core.lib.const import LANGS, SORT_ORDERS
 from .core.lib.dash_api import DISCOVER_PARAMS
+from .core.lib import mycat as mycat_lib
 
 # proměnná prostředí → klíč nastavení, který čte engine
 # TMDB se ve formuláři záměrně nenabízí: popisy a názvy si ve Stremiu řeší
@@ -74,7 +76,7 @@ CZ_RE = re.compile(r"^[0-9a-f]{32}$")
 JAZYK_KLIC = "jazyk"
 # vlastní katalogy (`katalogy.py`) — jen z adresy, formulář je ukládá jako JSON řetězec
 VK_KLIC = "vk"
-VK_MAX = 5
+VK_MAX = 20   # nastavení je v profilu, ne v adrese; ověřované katalogy se počítají do `mycat.MAX_VERIFIED` na zařízení
 VK_KLICOVA_SLOVA = {"fairy": "3205|329731|358931|351899"}   # pohádky: TMDB je má jen jako klíčové slovo
 VK_RAZENI = ("popularity.desc", "vote_average.desc", "primary_release_date.desc")
 # klíče, u kterých engine čeká pravdivostní hodnotu, ne řetězec
@@ -165,12 +167,29 @@ def _vk_jeden(c):
     out = {"n": " ".join(str(c.get("n") or "").split())[:40], "t": "series" if c.get("t") == "series" else "movie",
            "g": [x for x in g if 0 < x < 1000000], "k": [k for k in c.get("k") or [] if k in VK_KLICOVA_SLOVA][:3],
            "j": "or" if c.get("j") == "or" else "and"}
+    try:
+        posl = int(c.get("posl") or 0)
+    except (TypeError, ValueError):
+        posl = 0
+    if 1 <= posl <= 50:   # posledních X let: počítá se při každém dotazu, `od`/`do` se pak ignorují
+        out["posl"] = posl
     for pole, param in (("l", "with_original_language"), ("od", "year_from"), ("do", "year_to")):
         hodnota = str(c.get(pole) or "").strip()
-        if hodnota and DISCOVER_PARAMS[param].match(hodnota):
+        if hodnota and DISCOVER_PARAMS[param].match(hodnota) and "posl" not in out:
             out[pole] = hodnota
     if c.get("s") in VK_RAZENI:
         out["s"] = c["s"]
+    if c.get("ov") in (1, True, "1", "true"):   # ověřování dostupnosti streamů (`overovani.py`)
+        out["ov"] = 1
+        q = mycat_lib.norm_quality(c.get("q"))
+        if q:
+            out["q"] = f"{q:g}"
+        for pole in ("a", "ti"):
+            if c.get(pole) in mycat_lib.TRACKS and c.get(pole):
+                out[pole] = c[pole]
+        if c.get("ch") in (1, True, "1", "true"):
+            out["ch"] = 1
+        out["z"] = c.get("z") if c.get("z") in mycat_lib.SHOWS else "found"
     return out if out["n"] else None
 
 
@@ -188,11 +207,19 @@ def vlastni_katalogy(value):
 
 def vk_parametry(c):
     """Čistý katalog → parametry `DashApi.discover` (jako `mycat_params` v Kodi)."""
+    year_from, year_to = c.get("od") or "", c.get("do") or ""
+    if c.get("posl"):
+        year_from, year_to = str(datetime.date.today().year - int(c["posl"]) + 1), ""
     params = {"with_genres": ("|" if c.get("j") == "or" else ",").join(str(x) for x in c.get("g") or []),
               "with_keywords": "|".join(VK_KLICOVA_SLOVA[k] for k in c.get("k") or []),
-              "with_original_language": c.get("l") or "", "year_from": c.get("od") or "",
-              "year_to": c.get("do") or "", "sort_by": c.get("s") or ""}
+              "with_original_language": c.get("l") or "", "year_from": year_from,
+              "year_to": year_to, "sort_by": c.get("s") or ""}
     return {k: v for k, v in params.items() if v}
+
+
+def vk_definice(c):
+    """Požadavky na stream ověřovaného katalogu → argumenty `Engine.verify_title` (po typu a id)."""
+    return (mycat_lib.norm_quality(c.get("q")), bool(c.get("ch")), c.get("a") or "", c.get("ti") or "")
 
 
 def from_environ(environ=None):

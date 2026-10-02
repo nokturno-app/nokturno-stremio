@@ -985,8 +985,8 @@ const KATALOGY = __KATALOGY__;
 
 // --- vlastní katalogy: editor bez jmen polí, do adresy jde jen skryté pole „vk“ (JSON) ---
 (function () {
-  const T = {"odebrat": "Odobrať", "nazev": "Názov", "typ": "Druh", "filmy": "Filmy", "serialy": "Seriály", "zanry": "Žánre (nič = všetky)", "jeden": "Stačí jeden z vybraných žánrov", "jazyk": "Pôvodný jazyk", "od": "Od roku", "do_": "Do roku", "razeni": "Zoradiť podľa", "vlastni": "Vlastný katalóg", "jazyky": [["", "Akýkoľvek"], ["cs", "Čeština"], ["sk", "Slovenčina"], ["cs|sk", "Čeština alebo slovenčina"], ["en", "Angličtina"], ["de", "Nemčina"], ["fr", "Francúzština"], ["es", "Španielčina"], ["it", "Taliančina"], ["pl", "Poľština"], ["hu", "Maďarčina"], ["ko", "Kórejčina"], ["ja", "Japončina"]], "pohadky": "Rozprávky", "razeni_v": [["popularity.desc", "Obľúbenosti"], ["vote_average.desc", "Hodnotenia"], ["primary_release_date.desc", "Dátumu vydania"]], "zanry_v": {"movie": [[28, "Akčný"], [12, "Dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [14, "Fantasy"], [36, "Historický"], [27, "Horor"], [10402, "Hudobný"], [9648, "Mysteriózny"], [10749, "Romantický"], [878, "Sci-fi"], [53, "Thriller"], [10752, "Vojnový"], [37, "Western"]], "series": [[10759, "Akčný a dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [10762, "Pre deti"], [9648, "Mysteriózny"], [10764, "Reality"], [10765, "Sci-fi a fantasy"], [10768, "Vojnový a politický"], [37, "Western"]]}};
-  const MAX = 5, obal = $("vk"), skryte = form.elements["vk"], pridat = $("vk-pridat");
+  const T = {"odebrat": "Odobrať", "nazev": "Názov", "typ": "Druh", "filmy": "Filmy", "serialy": "Seriály", "zanry": "Žánre (nič = všetky)", "jeden": "Stačí jeden z vybraných žánrov", "jazyk": "Pôvodný jazyk", "od": "Od roku", "do_": "Do roku", "razeni": "Zoradiť podľa", "vlastni": "Vlastný katalóg", "roky": "Roky", "rok_zadny": "Bez obmedzenia", "rok_od_do": "Od–do", "rok_posl": "Posledných X rokov", "rok_kolik": "Koľko posledných rokov", "ov": "Overovať dostupnosť streamov", "ov_napoveda": "Katalóg ukáže len tituly so streamom podľa týchto požiadaviek. Overuje sa na pozadí, kým aplikácia beží.", "kvalita": "Minimálna kvalita", "kvality": [["0", "Akákoľvek"], ["3", "Full HD"], ["3.5", "2K"], ["4", "4K"]], "zvuk": "Jazyk zvuku", "titulky": "Titulky", "stopy": [["", "Akékoľvek"], ["CZ", "Čeština"], ["SK", "Slovenčina"], ["CZ|SK", "Čeština alebo slovenčina"], ["EN", "Angličtina"], ["HU", "Maďarčina"]], "kanaly": "5.1 a viac", "zobraz": "Zobraziť zoradené podľa", "zobraz_v": [["found", "Novo nájdené"], ["pool", "Rovnako ako výber"], ["released", "Najnovšie vydanie"]], "jazyky": [["", "Akýkoľvek"], ["cs", "Čeština"], ["sk", "Slovenčina"], ["cs|sk", "Čeština alebo slovenčina"], ["en", "Angličtina"], ["de", "Nemčina"], ["fr", "Francúzština"], ["es", "Španielčina"], ["it", "Taliančina"], ["pl", "Poľština"], ["hu", "Maďarčina"], ["ko", "Kórejčina"], ["ja", "Japončina"]], "pohadky": "Rozprávky", "razeni_v": [["popularity.desc", "Obľúbenosti"], ["vote_average.desc", "Hodnotenia"], ["primary_release_date.desc", "Dátumu vydania"]], "zanry_v": {"movie": [[28, "Akčný"], [12, "Dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [14, "Fantasy"], [36, "Historický"], [27, "Horor"], [10402, "Hudobný"], [9648, "Mysteriózny"], [10749, "Romantický"], [878, "Sci-fi"], [53, "Thriller"], [10752, "Vojnový"], [37, "Western"]], "series": [[10759, "Akčný a dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [10762, "Pre deti"], [9648, "Mysteriózny"], [10764, "Reality"], [10765, "Sci-fi a fantasy"], [10768, "Vojnový a politický"], [37, "Western"]]}};
+  const MAX = 20, obal = $("vk"), skryte = form.elements["vk"], pridat = $("vk-pridat");
   let seznam = [], hotovo = false;   // prekresli() před koncem skriptu sahá na ještě nedefinované `adresa`
   try { seznam = JSON.parse(skryte.value || "[]"); } catch (e) { seznam = []; }
   if (!Array.isArray(seznam)) seznam = [];
@@ -1036,13 +1036,46 @@ const KATALOGY = __KATALOGY__;
       const razeni = vyber(T.razeni_v, c.s);
       razeni.addEventListener("change", () => { c.s = razeni.value; uloz(); });
       c.s = razeni.value;
+      const rezim = vyber([["0", T.rok_zadny], ["1", T.rok_od_do], ["2", T.rok_posl]], c.posl ? "2" : (c.od || c.do) ? "1" : "0");
+      const odDo = el("div", {className: "dvojice"}, pole(T.od, rok("od")), pole(T.do_, rok("do")));
+      const poslVstup = el("input", {type: "number", min: 1, max: 50, step: 1, inputMode: "numeric", value: c.posl || ""});
+      poslVstup.addEventListener("input", () => { const n = parseInt(poslVstup.value, 10); c.posl = n >= 1 && n <= 50 ? n : ""; uloz(); });
+      const poslPole = pole(T.rok_kolik, poslVstup);
+      const ukazRoky = () => { odDo.hidden = rezim.value !== "1"; poslPole.hidden = rezim.value !== "2"; };
+      rezim.addEventListener("change", () => {
+        if (rezim.value !== "1") { c.od = ""; c.do = ""; }
+        if (rezim.value === "2") { c.posl = c.posl || 5; poslVstup.value = c.posl; } else c.posl = "";
+        ukazRoky(); uloz();
+      });
+      ukazRoky();
+      const ovBox = el("input", {type: "checkbox", checked: !!c.ov});
+      const volba = (klic, moznosti, vychozi) => {
+        const v = vyber(moznosti, String(c[klic] || vychozi));
+        v.addEventListener("change", () => { c[klic] = v.value === vychozi ? "" : v.value; uloz(); });
+        return v;
+      };
+      const chBox = el("input", {type: "checkbox", checked: !!c.ch});
+      chBox.addEventListener("change", () => { c.ch = chBox.checked ? 1 : ""; uloz(); });
+      const zobraz = vyber(T.zobraz_v, c.z || "found");
+      zobraz.addEventListener("change", () => { c.z = zobraz.value; uloz(); });
+      const ovBlok = el("div", {hidden: !c.ov},
+        el("div", {className: "dvojice"}, pole(T.kvalita, volba("q", T.kvality, "0")), pole(T.zobraz, zobraz)),
+        el("div", {className: "dvojice"}, pole(T.zvuk, volba("a", T.stopy, "")), pole(T.titulky, volba("ti", T.stopy, ""))),
+        el("label", {className: "prepinac"}, chBox, el("span", {}, el("strong", {textContent: T.kanaly}))));
+      ovBox.addEventListener("change", () => {
+        if (ovBox.checked) { c.ov = 1; c.z = c.z || "found"; } else delete c.ov;
+        ovBlok.hidden = !ovBox.checked; uloz();
+      });
+      const ov = el("div", {}, el("label", {className: "prepinac"}, ovBox, el("span", {}, el("strong", {textContent: T.ov}),
+        el("span", {className: "drobne", textContent: T.ov_napoveda}))), ovBlok);
       const odebrat = el("button", {type: "button", className: "male", textContent: T.odebrat});
       odebrat.addEventListener("click", () => { seznam.splice(i, 1); vykresli(); });
       obal.append(el("div", {className: "vk-kat"},
         el("div", {className: "dvojice"}, pole(T.nazev, nazev), pole(T.typ, typ)),
         el("span", {className: "drobne", textContent: T.zanry, style: "display:block;margin:0 0 .35rem"}), zanry, jeden,
         el("div", {className: "dvojice"}, pole(T.jazyk, jazyk), pole(T.razeni, razeni)),
-        el("div", {className: "dvojice"}, pole(T.od, rok("od")), pole(T.do_, rok("do"))),
+        pole(T.roky, rezim), odDo, poslPole,
+        ov,
         odebrat));
     });
     uloz();

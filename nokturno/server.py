@@ -29,6 +29,7 @@ from .identita import Identita
 from .enginy import Enginy
 from .routes import Blokace, VERZE, Odpoved, Router, jazyk_z_hlavicky, klient_z_useragent
 from .statistiky import Statistiky
+from .overovani import Overovani
 from .pady import Pady
 from .provoz import Provoz
 from . import cztor, kliky as kliky_zprav, sit, soukroma, tls
@@ -527,6 +528,9 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
                                            adresy_soubor=os.path.join(data_dir, "zakazane_adresy.txt")))
     server.pady = Pady.z_prostredi(data_dir, VERZE)
     server.router.pady = server.pady
+    if dash is not None and server.router.profily is not None:   # ověřené vlastní katalogy (overovani.py)
+        server.overovani = katalogy.overovani = Overovani(data_dir, enginy, dash, server.router.profily)
+        server.overovani.start()
     server.router.nastav_aplikaci(soukroma.nacti_aplikaci(data_dir))   # volby z /configure mají přednost
     if os.environ.get("NOKTURNO_SOUKROMA", "").strip().lower() in ("1", "true", "ano", "yes"):
         server.router.povolena = soukroma.Povolena(data_dir)

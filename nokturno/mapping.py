@@ -305,7 +305,7 @@ def manifest_version(verze):
     return shoda.group(0) if shoda else verze
 
 
-def manifest(verze, zdroje=(), nastaveno=True, katalogy=(), nova_adresa=None, jazyk="cs"):
+def manifest(verze, zdroje=(), nastaveno=True, katalogy=(), nova_adresa=None, jazyk="cs", koncerty=False):
     """Manifest doplňku.
 
     Vždy `stream`; `catalog` jen když si uživatel ve formuláři zapnul některý
@@ -331,8 +331,9 @@ def manifest(verze, zdroje=(), nastaveno=True, katalogy=(), nova_adresa=None, ja
         "name": "Nokturno",
         "description": popis,
         "logo": "https://nokturno.stream/logo.png",
-        "resources": ["stream", "catalog"] if katalogy else ["stream"],
-        "types": ["movie", "series"],
+        "resources": (["stream", "catalog"] if katalogy else ["stream"])
+        + ([{"name": "meta", "types": ["Koncerty"], "idPrefixes": ["nktk:"]}] if koncerty else []),
+        "types": ["movie", "series"] + (["Koncerty"] if koncerty else []),
         "catalogs": list(katalogy),
         "behaviorHints": {"configurable": False, "configurationRequired": not nastaveno},
     }

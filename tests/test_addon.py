@@ -433,8 +433,9 @@ class TestNastaveni(unittest.TestCase):
     def test_klice_sedi_na_to_co_cte_engine(self):
         """Překlep v klíči by se neprojevil chybou, jen tichým ignorováním nastavení."""
         zdroj = (ROOT / "nokturno" / "core" / "engine.py").read_text(encoding="utf-8")
-        # `katalogy` nečte jádro, ale doplněk sám (nokturno/katalogy.py)
-        chybi = [k for k in config.PROSTREDI.values() if f'"{k}"' not in zdroj and k not in ("hs_enabled", "katalogy")]
+        # `katalogy` nečte jádro, ale doplněk sám (nokturno/katalogy.py); `lastfm_key` čte `concertcat`/overovani
+        chybi = [k for k in config.PROSTREDI.values()
+                 if f'"{k}"' not in zdroj and k not in ("hs_enabled", "katalogy", "lastfm_key")]
         self.assertEqual(chybi, [], f"engine tyhle klíče nezná: {chybi}")
 
 
@@ -684,8 +685,8 @@ class TestVlastniKatalogy(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             ov = Overovani(d, Enginy(), dash, Profily())
             cat = config.vlastni_katalogy(options["vk"])[0]
-            for _ in range(2):
-                self.assertTrue(ov.krok())
+            self.assertTrue(ov.krok())   # katalog bez ověřeného titulu dostane úvodní dávku najednou
+            self.assertFalse(ov.krok())
             vis = ov.polozky(config.decode(kousek), cat)
             self.assertEqual([m["id"] for m in vis], ["tt0010000"])
 
@@ -3383,3 +3384,105 @@ class TestProfily(unittest.TestCase):
             t = (st / jm).read_text(encoding="utf-8")
             for s in ("__ADRESA__", "stremio://", "nuvio://"):
                 self.assertIn(s, t, (jm, s))
+
+
+class TestKatalogKoncertu(unittest.TestCase):
+    """Vlastní katalog koncertů: validace, ověřování s falešnými Last.fm a zdroji, manifest, meta a stream."""
+
+    SOUBORY = [{"ref": "ws:abc", "name": "Metallica Live in Seoul 2017 1080p.mkv", "size": 9_000_000_000,
+                "duration": 0, "source": "ws"},
+               {"ref": "hs:1:ff", "name": "Metallica - Live in Seoul (2017).mkv", "size": 5_000_000_000,
+                "duration": 7000, "source": "hs"}]
+
+    def _vse(self, soubory=None):
+        import contextlib
+        import unittest.mock as mock
+        from nokturno import katalogy as kat, overovani as ovr
+        from nokturno.core.lib import concertcat
+
+        class Engine:
+            def background(self):
+                return contextlib.nullcontext()
+
+            def sources(self):
+                return {"webshare": True}
+
+        class Enginy:
+            def pro(self, options):
+                return Engine()
+
+        options = config.from_mapping({"lastfm_key": "ab12", "hs_enabled": True,
+                                       "vk": [{"n": "Rock", "t": "koncert", "g": ["metal", "zly", "rock"]}]})
+        kousek = config.encode(options)
+
+        class Profily:
+            def seznam(self):
+                return [{"klic": "p1"}]
+
+            def nacti(self, klic):
+                return kousek
+
+        d = tempfile.mkdtemp()
+        ov = ovr.Overovani(d, Enginy(), None, Profily())
+        k = kat.Katalogy(d, dash=None)
+        k.overovani = ov
+        pool = [{"id": "a:metallica", "name": "Metallica"}, {"id": "a:nikdo", "name": "Nikdo"}]
+        hledani = lambda e, artist, rivals=(), stop=None: (soubory or self.SOUBORY) if artist == "Metallica" else []
+        patcher = (mock.patch.object(concertcat, "pool", lambda key, tags: pool),
+                   mock.patch.object(concertcat, "search", hledani))
+        for p in patcher:
+            p.start()
+            self.addCleanup(p.stop)
+        return options, k, ov
+
+    def test_validace(self):
+        vk = config.vlastni_katalogy([{"n": "R", "t": "koncert", "g": ["metal", "zly", "rock"], "z": "xx", "ov": 0},
+                                      {"n": "Bez žánru", "t": "koncert", "g": ["zly"]}])
+        self.assertEqual(vk, [{"n": "R", "t": "koncert", "g": ["metal", "rock"], "ov": 1, "z": "pool"}])
+        self.assertNotIn("lastfm_key", config.from_mapping({"lastfm_key": "není-hex"}))
+        self.assertEqual(config.from_mapping({"lastfm_key": " AB12 "})["lastfm_key"], "ab12")
+
+    def test_prvni_krok_overi_celou_davku(self):
+        options, k, ov = self._vse()
+        self.assertTrue(ov.krok())
+        cat = config.vlastni_katalogy(options["vk"])[0]
+        self.assertEqual([r["name"] for r in ov.polozky(options, cat)], ["Metallica"])
+        self.assertFalse(ov.krok())
+
+    def test_bez_klice_lastfm_se_nic_nestane(self):
+        options, k, ov = self._vse()
+        options.pop("lastfm_key")
+        self.assertIsNone(ov._pool(options, config.vlastni_katalogy(options["vk"])[0]))
+
+    def test_manifest_katalog_meta_a_stream(self):
+        options, k, ov = self._vse()
+        ov.krok()
+        self.assertTrue(k.ma_koncerty(options))
+        self.assertEqual([(c["type"], c["name"]) for c in k.manifest(options)], [("Koncerty", "Rock")])
+        m = mapping.manifest("1.0.0", ["x"], katalogy=k.manifest(options), koncerty=True)
+        self.assertIn({"name": "meta", "types": ["Koncerty"], "idPrefixes": ["nktk:"]}, m["resources"])
+        self.assertIn("Koncerty", m["types"])
+        metas = k.polozky("Koncerty", "nokturno.vk.0", 0, options)
+        self.assertEqual([x["id"] for x in metas], ["nktk:0:metallica"])
+        self.assertEqual(metas[0]["posterShape"], "square")
+        self.assertIsNone(k.polozky("movie", "nokturno.vk.0", 0, options))
+        meta = k.koncert_meta(options, "nktk:0:metallica")
+        self.assertEqual(len(meta["videos"]), 1)
+        self.assertEqual(meta["videos"][0]["id"], "nktk:0:metallica:0")
+        self.assertEqual([p["url"] for p in k.koncert_soubory(options, "nktk:0:metallica:0")], ["ws:abc", "hs:1:ff"])
+        self.assertIsNone(k.koncert_meta(options, "nktk:0:neznamy"))
+        self.assertEqual(k.koncert_soubory(options, "nktk:0:metallica:9"), [])
+        self.assertEqual(k.koncert_soubory(options, "nktk:7:metallica:0"), [])
+
+    def test_routy_meta_a_stream(self):
+        options, k, ov = self._vse()
+        ov.krok()
+        r = router()
+        r.katalogy = k
+        kousek = config.encode(options)
+        meta = r.route(f"/c/{kousek}/meta/Koncerty/nktk:0:metallica.json", ZAKLAD)
+        self.assertEqual(meta.data["meta"]["name"], "Metallica")
+        self.assertEqual(r.route(f"/c/{kousek}/meta/movie/nktk:0:metallica.json", ZAKLAD).status, 404)
+        st = r.route(f"/c/{kousek}/stream/Koncerty/nktk:0:metallica:0.json", ZAKLAD)
+        self.assertEqual(len(st.data["streams"]), 2)
+        self.assertEqual(r.route(f"/c/{kousek}/stream/Koncerty/nktk:0:metallica:5.json", ZAKLAD).data["streams"], [])

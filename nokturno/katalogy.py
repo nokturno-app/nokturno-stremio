@@ -35,6 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import config
 
+from .core.lib import concertcat
 from .core.lib.sosac_direct import SosacDirect
 from .core.lib.store import Store
 from .core.lib.tmdb_api import TmdbApi
@@ -111,6 +112,9 @@ TMDB_DASH = {"popular": {"sort_by": "popularity.desc"},
 DASH = "dash."   # klíč katalogu z dashboardu: `dash.<slug>`
 VK = "vk."       # vlastní katalog: `vk.<pořadí>`
 STRANKA_VK = 100
+KONCERTY = "Koncerty"   # vlastní typ Stremia pro koncertní katalogy (`t == "koncert"`)
+KPREFIX = "nktk:"       # id: `nktk:<katalog>:<interpret>` (meta), `…:<koncert>` (stream)
+ZDROJE_KONCERTU = {"ws": "WebShare", "hs": "HellSpy", "fs": "FastShare"}
 STRANKA_DISCOVER = 20
 DISCOVER_STRAN = 10   # víc stránek dashboard nevydá (`DISCOVER_MAX_PAGE`)
 
@@ -164,7 +168,51 @@ class Katalogy:
             return []
 
     def vlastni(self, options):
-        return config.vlastni_katalogy((options or {}).get(config.VK_KLIC)) if self.dash is not None else []
+        vk = config.vlastni_katalogy((options or {}).get(config.VK_KLIC))
+        return vk if self.dash is not None else [c for c in vk if c["t"] == "koncert"]   # koncerty dashboard nepotřebují
+
+    def ma_koncerty(self, options):
+        return self.overovani is not None and any(c["t"] == "koncert" for c in self.vlastni(options))
+
+    @staticmethod
+    def _koncert_nahled(n, r):
+        mid = r["id"][2:]   # bez „a:“
+        return {"id": f"{KPREFIX}{n}:{mid}", "type": KONCERTY, "name": r["name"], "posterShape": "square",
+                "description": f"Koncertů: {len(concertcat.group(r['files'], r['name']))}"}
+
+    def _koncert(self, options, item_id):
+        """`nktk:<katalog>:<interpret>[:<koncert>]` → (interpret, koncerty z `concertcat.group`, číslo koncertu | None)."""
+        casti = str(item_id).split(":")
+        if casti[0] + ":" != KPREFIX or len(casti) not in (3, 4) or not casti[1].isdigit() or self.overovani is None:
+            return None
+        vlastni, n = self.vlastni(options), int(casti[1])
+        if n >= len(vlastni) or vlastni[n]["t"] != "koncert":
+            return None
+        r = next((x for x in self.overovani.polozky(options, vlastni[n]) if x["id"] == "a:" + casti[2]), None)
+        if r is None:
+            return None
+        poradi = int(casti[3]) if len(casti) == 4 and casti[3].isdigit() else None
+        return r["name"], concertcat.group(r["files"], r["name"]), poradi
+
+    def koncert_meta(self, options, item_id):
+        """Meta interpreta: každý jeho koncert jako „video“. None = takové id tu není."""
+        k = self._koncert(options, item_id)
+        if k is None:
+            return None
+        jmeno, koncerty, _ = k
+        videa = [{"id": f"{item_id}:{i}", "title": f"{g['title']} ({g['year']})" if g["year"] else g["title"],
+                  "released": f"{g['year'] or 1970}-01-01T00:00:00.000Z"} for i, g in enumerate(koncerty)]
+        return {"id": item_id, "type": KONCERTY, "name": jmeno, "posterShape": "square", "videos": videa,
+                "description": f"Koncertů: {len(koncerty)}"}
+
+    def koncert_soubory(self, options, item_id):
+        """Soubory jednoho koncertu (id se 4 částmi) jako popisy streamů pro `mapping.streams_response`."""
+        k = self._koncert(options, item_id)
+        if k is None or k[2] is None or k[2] >= len(k[1]):
+            return []
+        return [{"url": f["ref"], "file": f["name"], "source": ZDROJE_KONCERTU.get(f["source"], ""),
+                 "size_gb": round(f["size"] / 1000 ** 3, 2) if f.get("size") else 0,
+                 "length_min": (f.get("duration") or 0) // 60} for f in k[1][k[2]]["files"]]
 
     def _vlastni_polozky(self, typ, cat, skip):
         """Náhledy `skip`–`skip+100` vlastního katalogu; stránky dashboardu souběžně."""
@@ -189,7 +237,7 @@ class Katalogy:
     def manifest(self, options, jazyk="cs"):
         dashboard = [{"type": typ, "id": PREFIX + DASH + slug, "name": nazev}
                      for slug, typ, nazev in self.z_dashboardu()]
-        vlastni = [{"type": c["t"], "id": f"{PREFIX}{VK}{i}", "name": c["n"],
+        vlastni = [{"type": KONCERTY if c["t"] == "koncert" else c["t"], "id": f"{PREFIX}{VK}{i}", "name": c["n"],
                     "extra": [{"name": "skip", "isRequired": False}]}
                    for i, c in enumerate(self.vlastni(options))]
         return dashboard + vlastni + [{"type": typ, "id": PREFIX + klic, "name": sk if jazyk == "sk" else cs,
@@ -203,8 +251,13 @@ class Katalogy:
             vlastni = self.vlastni(options)
             poradi = klic[len(VK):]
             cat = vlastni[int(poradi)] if poradi.isdigit() and int(poradi) < len(vlastni) else None
-            if cat is None or cat["t"] != typ:
+            if cat is None or (KONCERTY if cat["t"] == "koncert" else cat["t"]) != typ:
                 return None
+            if cat["t"] == "koncert":   # interpreti s nálezem; plní se na pozadí, bez klíče Last.fm prázdné
+                if self.overovani is None:
+                    return []
+                skip = max(0, int(skip or 0))
+                return [self._koncert_nahled(int(poradi), r) for r in self.overovani.polozky(options, cat)][skip:skip + STRANKA_VK]
             if cat.get("ov") and self.overovani is not None:
                 # jen tituly, které ověřování označilo za vyhovující; plní se postupně na pozadí
                 skip = max(0, int(skip or 0))

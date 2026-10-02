@@ -26,6 +26,7 @@ import json
 import os
 import re
 
+from .core.lib import concertcat
 from .core.lib.const import LANGS, SORT_ORDERS
 from .core.lib.dash_api import DISCOVER_PARAMS
 from .core.lib import mycat as mycat_lib
@@ -52,6 +53,8 @@ PROSTREDI = {
     "NOKTURNO_FS_PROVIDER": "fs_provider",
     "NOKTURNO_PT_EMAIL": "pt_email",
     "NOKTURNO_PT_PASSWORD": "pt_password",
+    # vlastní klíč Last.fm pro katalogy koncertů (jen v profilu, nikdy v adrese ani v logu)
+    "NOKTURNO_LASTFM_KEY": "lastfm_key",
     # zapnuté katalogy, klíče oddělené čárkou — viz nokturno/katalogy.py
     "NOKTURNO_KATALOGY": "katalogy",
     "NOKTURNO_PREF_LANG": "pref_lang",
@@ -78,6 +81,7 @@ JAZYK_KLIC = "jazyk"
 VK_KLIC = "vk"
 VK_MAX = 20   # nastavení je v profilu, ne v adrese; ověřované katalogy se počítají do `mycat.MAX_VERIFIED` na zařízení
 VK_KLICOVA_SLOVA = {"fairy": "3205|329731|358931|351899"}   # pohádky: TMDB je má jen jako klíčové slovo
+LASTFM_RE = re.compile(r"^[0-9a-f]{1,64}$")
 VK_RAZENI = ("popularity.desc", "vote_average.desc", "primary_release_date.desc")
 # klíče, u kterých engine čeká pravdivostní hodnotu, ne řetězec
 LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d", "hide_lowq")
@@ -111,6 +115,10 @@ def from_mapping(raw):
             if isinstance(value, str) and CZ_RE.match(value.strip()):
                 options[key] = value.strip()
                 options["cz_enabled"] = True   # přepínač jádra; bez spárování ho `Engine.cz` stejně vypne
+            continue
+        if key == "lastfm_key":
+            if isinstance(value, str) and LASTFM_RE.match(value.strip().lower()):
+                options[key] = value.strip().lower()
             continue
         if key == VK_KLIC:
             vk = vlastni_katalogy(value)
@@ -160,6 +168,13 @@ def _vk_jeden(c):
     """Jeden katalog z formuláře → čistý záznam, nebo None. Hodnoty jsou od kohokoli."""
     if not isinstance(c, dict):
         return None
+    if c.get("t") == "koncert":   # katalog koncertů: jen název, žánry Last.fm a řazení; ověřuje se vždy
+        tagy = sorted({str(x) for x in c.get("g") or [] if str(x) in concertcat.TAGS})
+        nazev = " ".join(str(c.get("n") or "").split())[:40]
+        if not (nazev and tagy):
+            return None
+        return {"n": nazev, "t": "koncert", "g": tagy, "ov": 1,
+                "z": c.get("z") if c.get("z") in concertcat.SHOWS else "pool"}
     try:
         g = [int(x) for x in c.get("g") or []][:10]
     except (TypeError, ValueError):
@@ -219,6 +234,8 @@ def vk_parametry(c):
 
 def vk_definice(c):
     """Požadavky na stream ověřovaného katalogu → argumenty `Engine.verify_title` (po typu a id)."""
+    if c.get("t") == "koncert":   # stejný podpis jako `mycat.sig` u koncertního katalogu
+        return ("concert", False, ",".join(sorted(c.get("g") or [])))
     return (mycat_lib.norm_quality(c.get("q")), bool(c.get("ch")), c.get("a") or "", c.get("ti") or "")
 
 

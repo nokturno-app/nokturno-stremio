@@ -14,12 +14,13 @@ import threading
 import time
 
 from . import config
-from .core.lib import catindex
+from .core.lib import catindex, concertcat, concertfilter
 from .core.lib.mycat import POOL_EVERY, pool_for
 from .core.lib.store import Store
 
 _LOGGER = logging.getLogger(__name__)
 
+PRVNI_DAVKA = 30   # katalog bez jediného ověřeného titulu dostane úvodní dávku najednou, ať není hned prázdný
 STARE = 14 * 86400   # soubor indexu, na který se 14 dní nesáhlo (katalog smazán), se uklidí
 
 
@@ -45,7 +46,10 @@ class Overovani:
 
     def polozky(self, options, cat):
         """Metadata vyhovujících titulů v pořadí podle `z`; prázdné, dokud se nic neověřilo."""
-        return catindex.visible(self._index(options, cat), sort=cat.get("z") or "found")
+        index = self._index(options, cat)
+        if cat.get("t") == "koncert":
+            return concertcat.visible(index, cat.get("z") or "pool")
+        return catindex.visible(index, sort=cat.get("z") or "found")
 
     def _cile(self):
         """Ověřované katalogy všech uložených profilů, bez duplicit (stejný klíč indexu)."""
@@ -76,23 +80,51 @@ class Overovani:
         index = self.store.reload(klic, {})
         if not isinstance(index, dict) or index.get("sig") != sig:
             index = {"sig": sig}
-        if now - int(index.get("pool_ts") or 0) >= POOL_EVERY:
-            kandidati = pool_for(self.dash, cat["t"], config.vk_parametry(cat))
+        if now - int(index.get("pool_ts") or 0) >= POOL_EVERY and now - int(index.get("pool_try") or 0) >= 1800:
+            index["pool_try"] = now   # selhání (špatný klíč, výpadek) se nezkouší každou minutu
+            kandidati = self._pool(options, cat)
             if kandidati is not None:
                 catindex.merge_pool(index, kandidati, now)
                 index["pool_ts"] = now
-        batch = catindex.next_batch(index, now, 1)
-        if batch:
+        prvni = catindex.counts(index)[0] == 0
+        batch = catindex.next_batch(index, now, PRVNI_DAVKA if prvni else 1)
+        if cat.get("t") == "koncert":
+            jmena = [(e.get("meta") or {}).get("name") or "" for e in (index.get("items") or {}).values()]
+        for mid in batch:
             try:
                 engine = self.enginy.pro(options)
                 with engine.background():
-                    vysledek = engine.verify_title(cat["t"], batch[0], *definice)
+                    if cat.get("t") == "koncert":
+                        nazev = ((index["items"].get(mid) or {}).get("meta") or {}).get("name") or ""
+                        files = concertcat.search(engine, nazev, concertfilter.rivals(nazev, jmena)) if nazev else None
+                        vysledek = None if files is None else bool(files)
+                    else:
+                        vysledek = engine.verify_title(cat["t"], mid, *definice)
             except Exception as err:  # noqa: BLE001 – výpadek zdroje = zkusit později
-                _LOGGER.debug("ověření %s: %s", batch[0], err)
-                vysledek = None
-            catindex.record(index, batch[0], vysledek, int(time.time()))
+                _LOGGER.debug("ověření %s: %s", mid, err)
+                vysledek, files = None, None
+            catindex.record(index, mid, vysledek, int(time.time()))
+            if cat.get("t") == "koncert":
+                entry = index["items"][mid]
+                if vysledek:
+                    entry["files"] = files
+                else:
+                    entry.pop("files", None)
         self.store.save(klic, index)
         return bool(batch)
+
+    def _pool(self, options, cat):
+        """Kandidáti katalogu: filmy a seriály z dashboardu, interpreti z Last.fm (jen s klíčem v profilu)."""
+        if cat.get("t") != "koncert":
+            return pool_for(self.dash, cat["t"], config.vk_parametry(cat))
+        klic = str((options or {}).get("lastfm_key") or "")
+        if not klic:
+            return None
+        try:
+            return concertcat.pool(klic, cat.get("g") or [])
+        except concertcat.ConcertError as err:
+            _LOGGER.debug("Last.fm: %s", err)
+            return None
 
     def _uklid_souboru(self, now):
         try:

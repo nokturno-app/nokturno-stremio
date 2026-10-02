@@ -62,6 +62,7 @@ from .core.lib.storage_api import SLOTS, StorageApi
 from .core.lib.cztor_api import CztorError
 from . import config, cztor, mapping, profily, sit, soukroma
 from .enginy import PrilisMnohoNovych
+from .katalogy import KONCERTY
 from .identita import Identita
 from . import tls
 from .kliky import Kliky
@@ -599,7 +600,7 @@ class Router:
         zdroje = config.sources_from_options(options)
         katalogy = self.katalogy.manifest(options, jazyk) if self.katalogy else []
         data = mapping.manifest(self.verze, zdroje, nastaveno=bool(zdroje), katalogy=katalogy, nova_adresa=nova_adresa,
-                                jazyk=jazyk)
+                                jazyk=jazyk, koncerty=bool(self.katalogy and self.katalogy.ma_koncerty(options)))
         data["behaviorHints"]["configurable"] = True
         # bez vlastního nastavení ať Stremio rovnou nabídne formulář
         data["behaviorHints"]["configurationRequired"] = not (nastaveno or zdroje)
@@ -926,6 +927,20 @@ class Router:
             return chyba(404, "Takový katalog tu není.")
         return Odpoved(data={"metas": metas})
 
+    def koncert_meta(self, casti, options):
+        """`/meta/Koncerty/<id>.json` → `{"meta": …}`; jiný typ nebo neznámé id = 404."""
+        if (self.katalogy is None or len(casti) != 3 or casti[1] != KONCERTY or not casti[2].endswith(".json")):
+            return chyba(404, "Takové meta tu není.")
+        meta = self.katalogy.koncert_meta(options, casti[2][:-len(".json")])
+        return Odpoved(data={"meta": meta}) if meta else chyba(404, "Takové meta tu není.")
+
+    def koncert_streamy(self, engine, options, item_id, zaklad, kousek, jazyk="cs"):
+        popisy = self.katalogy.koncert_soubory(options, item_id) if self.katalogy else []
+        odp = mapping.streams_response(popisy, self._odkaz(zaklad, kousek), primy=_primy(engine), jazyk=jazyk)
+        for s in odp["streams"]:
+            s["name"] = "Koncerty"
+        return Odpoved(data=odp)
+
     def play(self, engine, payload, klic="vychozi"):
         vnitrni = mapping.dekoduj(payload)
         if not vnitrni:
@@ -1054,12 +1069,14 @@ class Router:
                                  nova_adresa=nova if stara else None, jazyk=jazyk)
 
         casti = [c for c in zbytek.split("/") if c]
-        if casti and casti[0] == "catalog":
+        if casti and casti[0] in ("catalog", "meta"):
             # katalog na účtech nezávisí — jádro se nezakládá, cache je jedna pro všechny
             if not self.katalog_okno.povolit(klic_klienta(klient) or "?"):
                 odp = chyba(429, "Příliš mnoho požadavků na katalog za sebou, zkus to za pár minut.")
                 odp.utok = ("limit", config.fingerprint(options) if kousek else None)
                 return odp
+            if casti[0] == "meta":
+                return self.koncert_meta(casti, options)
             return self.katalog(casti, options)
 
         if stara and casti and casti[0] in ("stream", "play"):
@@ -1098,6 +1115,8 @@ class Router:
 
         if casti and casti[0] == "play" and len(casti) == 2:
             return self.play(engine, casti[1], klic=config.fingerprint(options) if kousek else "vychozi")
+        if casti and casti[0] == "stream" and len(casti) == 3 and casti[1] == KONCERTY and casti[2].endswith(".json"):
+            return self.koncert_streamy(engine, options, casti[2][:-len(".json")], zaklad, kousek, jazyk)
         if casti and casti[0] == "stream" and len(casti) == 3 and casti[2].endswith(".json"):
             odp = self.streams(engine, casti[1], casti[2][:-len(".json")], zaklad, kousek, aplikace, jazyk)
             if kousek and isinstance(odp.data, dict) and odp.data.get("streams"):

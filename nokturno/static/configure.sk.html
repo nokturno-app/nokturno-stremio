@@ -670,10 +670,15 @@
           <h3>Vlastné katalógy</h3>
           <span class="stitek">Voliteľné · až 5 katalógov</span>
         </div>
-        <p>Poskladaj si vlastný zoznam podľa žánru, pôvodného jazyka a rokov – napríklad české rozprávky alebo kórejské thrillery. Katalóg sa objaví na domovskej stránke Stremia, tituly dodá server Nokturna. Po zmene katalógu pridaj doplnok znova.</p>
+        <p>Poskladaj si vlastný zoznam podľa žánru, pôvodného jazyka a rokov – napríklad české rozprávky alebo kórejské thrillery. Druh Koncerty skladá zoznam interpretov podľa hudobných žánrov. Katalóg sa objaví na domovskej stránke Stremia, tituly dodá server Nokturna. Po zmene katalógu pridaj doplnok znova.</p>
         <div id="vk"></div>
         <button type="button" class="male" id="vk-pridat">Pridať katalóg</button>
         <input type="hidden" name="vk">
+        <div id="lastfm-blok" hidden>
+          <label class="pole"><span>Last.fm API kľúč</span>
+            <span class="heslo"><input type="password" name="lastfm_key" maxlength="64" autocomplete="off" spellcheck="false"></span></label>
+          <p class="drobne">Kľúč zadarmo na last.fm/api. Potrebný len pre katalógy koncertov.</p>
+        </div>
       </div>
     </section>
   </form>
@@ -985,7 +990,7 @@ const KATALOGY = __KATALOGY__;
 
 // --- vlastní katalogy: editor bez jmen polí, do adresy jde jen skryté pole „vk“ (JSON) ---
 (function () {
-  const T = {"odebrat": "Odobrať", "nazev": "Názov", "typ": "Druh", "filmy": "Filmy", "serialy": "Seriály", "zanry": "Žánre (nič = všetky)", "jeden": "Stačí jeden z vybraných žánrov", "jazyk": "Pôvodný jazyk", "od": "Od roku", "do_": "Do roku", "razeni": "Zoradiť podľa", "vlastni": "Vlastný katalóg", "roky": "Roky", "rok_zadny": "Bez obmedzenia", "rok_od_do": "Od–do", "rok_posl": "Posledných X rokov", "rok_kolik": "Koľko posledných rokov", "ov": "Overovať dostupnosť streamov", "ov_napoveda": "Katalóg ukáže len tituly so streamom podľa týchto požiadaviek. Overuje sa na pozadí, kým aplikácia beží.", "kvalita": "Minimálna kvalita", "kvality": [["0", "Akákoľvek"], ["3", "Full HD"], ["3.5", "2K"], ["4", "4K"]], "zvuk": "Jazyk zvuku", "titulky": "Titulky", "stopy": [["", "Akékoľvek"], ["CZ", "Čeština"], ["SK", "Slovenčina"], ["CZ|SK", "Čeština alebo slovenčina"], ["EN", "Angličtina"], ["HU", "Maďarčina"]], "kanaly": "5.1 a viac", "zobraz": "Zobraziť zoradené podľa", "zobraz_v": [["found", "Novo nájdené"], ["pool", "Rovnako ako výber"], ["released", "Najnovšie vydanie"]], "jazyky": [["", "Akýkoľvek"], ["cs", "Čeština"], ["sk", "Slovenčina"], ["cs|sk", "Čeština alebo slovenčina"], ["en", "Angličtina"], ["de", "Nemčina"], ["fr", "Francúzština"], ["es", "Španielčina"], ["it", "Taliančina"], ["pl", "Poľština"], ["hu", "Maďarčina"], ["ko", "Kórejčina"], ["ja", "Japončina"]], "pohadky": "Rozprávky", "razeni_v": [["popularity.desc", "Obľúbenosti"], ["vote_average.desc", "Hodnotenia"], ["primary_release_date.desc", "Dátumu vydania"]], "zanry_v": {"movie": [[28, "Akčný"], [12, "Dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [14, "Fantasy"], [36, "Historický"], [27, "Horor"], [10402, "Hudobný"], [9648, "Mysteriózny"], [10749, "Romantický"], [878, "Sci-fi"], [53, "Thriller"], [10752, "Vojnový"], [37, "Western"]], "series": [[10759, "Akčný a dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [10762, "Pre deti"], [9648, "Mysteriózny"], [10764, "Reality"], [10765, "Sci-fi a fantasy"], [10768, "Vojnový a politický"], [37, "Western"]]}};
+  const T = {"odebrat": "Odobrať", "nazev": "Názov", "typ": "Druh", "filmy": "Filmy", "serialy": "Seriály", "zanry": "Žánre (nič = všetky)", "jeden": "Stačí jeden z vybraných žánrov", "jazyk": "Pôvodný jazyk", "od": "Od roku", "do_": "Do roku", "razeni": "Zoradiť podľa", "vlastni": "Vlastný katalóg", "roky": "Roky", "rok_zadny": "Bez obmedzenia", "rok_od_do": "Od–do", "rok_posl": "Posledných X rokov", "rok_kolik": "Koľko posledných rokov", "ov": "Overovať dostupnosť streamov", "ov_napoveda": "Katalóg ukáže len tituly so streamom podľa týchto požiadaviek. Overuje sa na pozadí, kým aplikácia beží.", "kvalita": "Minimálna kvalita", "kvality": [["0", "Akákoľvek"], ["3", "Full HD"], ["3.5", "2K"], ["4", "4K"]], "zvuk": "Jazyk zvuku", "titulky": "Titulky", "stopy": [["", "Akékoľvek"], ["CZ", "Čeština"], ["SK", "Slovenčina"], ["CZ|SK", "Čeština alebo slovenčina"], ["EN", "Angličtina"], ["HU", "Maďarčina"]], "kanaly": "5.1 a viac", "zobraz": "Zobraziť zoradené podľa", "zobraz_v": [["found", "Novo nájdené"], ["pool", "Rovnako ako výber"], ["released", "Najnovšie vydanie"]], "jazyky": [["", "Akýkoľvek"], ["cs", "Čeština"], ["sk", "Slovenčina"], ["cs|sk", "Čeština alebo slovenčina"], ["en", "Angličtina"], ["de", "Nemčina"], ["fr", "Francúzština"], ["es", "Španielčina"], ["it", "Taliančina"], ["pl", "Poľština"], ["hu", "Maďarčina"], ["ko", "Kórejčina"], ["ja", "Japončina"]], "pohadky": "Rozprávky", "razeni_v": [["popularity.desc", "Obľúbenosti"], ["vote_average.desc", "Hodnotenia"], ["primary_release_date.desc", "Dátumu vydania"]], "zanry_v": {"movie": [[28, "Akčný"], [12, "Dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [14, "Fantasy"], [36, "Historický"], [27, "Horor"], [10402, "Hudobný"], [9648, "Mysteriózny"], [10749, "Romantický"], [878, "Sci-fi"], [53, "Thriller"], [10752, "Vojnový"], [37, "Western"]], "series": [[10759, "Akčný a dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [10762, "Pre deti"], [9648, "Mysteriózny"], [10764, "Reality"], [10765, "Sci-fi a fantasy"], [10768, "Vojnový a politický"], [37, "Western"]]}, "koncerty": "Koncerty", "tagy": [["czech", "Česká"], ["slovak", "Slovenská"], ["czech rock", "Český rock"], ["classic rock", "Classic rock"], ["hard rock", "Hard rock"], ["metal", "Metal"], ["rock", "Rock"], ["pop", "Pop"], ["punk", "Punk"], ["hip-hop", "Hip-hop"], ["jazz", "Jazz"], ["electronic", "Elektronická"], ["folk", "Folk"], ["classical", "Klasická"], ["reggae", "Reggae"], ["world", "World"]], "zobraz_k": [["pool", "Rovnako ako výber"], ["found", "Novo nájdené"], ["name", "Podľa abecedy"]], "hudba": "Hudobné žánre", "hudba_n": "Katalóg koncertov hľadá záznamy podľa obľúbených interpretov vybraných žánrov. Hľadá sa na pozadí, kým aplikácia beží, takže sa zapĺňa postupne."};
   const MAX = 20, obal = $("vk"), skryte = form.elements["vk"], pridat = $("vk-pridat");
   let seznam = [], hotovo = false;   // prekresli() před koncem skriptu sahá na ještě nedefinované `adresa`
   try { seznam = JSON.parse(skryte.value || "[]"); } catch (e) { seznam = []; }
@@ -994,6 +999,7 @@ const KATALOGY = __KATALOGY__;
   const vyber = (moznosti, hodnota) => { const s = el("select"); for (const [v, n] of moznosti) s.append(el("option", {value: v, textContent: n})); s.value = hodnota || moznosti[0][0]; return s; };
   const pole = (popisek, vstup) => el("label", {className: "pole"}, el("span", {textContent: popisek}), vstup);
   function nazevAuto(c) {
+    if (c.t === "koncert") return (c.g || []).map((g) => (T.tagy.find(([v]) => v === g) || [])[1]).filter(Boolean).join(", ") || T.koncerty;
     const zanry = Object.fromEntries(T.zanry_v[c.t]);
     const casti = (c.k || []).map(() => T.pohadky).concat((c.g || []).map((g) => zanry[g]).filter(Boolean));
     const jazyk = (T.jazyky.find(([v]) => v && v === c.l) || [])[1];
@@ -1003,16 +1009,39 @@ const KATALOGY = __KATALOGY__;
     const cista = seznam.map((c) => ({...c, n: (c.n || "").trim() || nazevAuto(c)}));
     skryte.value = cista.length ? JSON.stringify(cista) : "";
     pridat.hidden = seznam.length >= MAX;
+    $("lastfm-blok").hidden = !seznam.some((c) => c.t === "koncert");
     if (hotovo) prekresli();
   }
   function vykresli() {
     obal.replaceChildren();
     seznam.forEach((c, i) => {
-      c.t = c.t === "series" ? "series" : "movie";
+      c.t = ["series", "koncert"].includes(c.t) ? c.t : "movie";
       const nazev = el("input", {type: "text", maxLength: 40, value: c.n || "", placeholder: nazevAuto(c)});
       nazev.addEventListener("input", () => { c.n = nazev.value; uloz(); });
-      const typ = vyber([["movie", T.filmy], ["series", T.serialy]], c.t);
-      typ.addEventListener("change", () => { c.t = typ.value; c.g = []; vykresli(); });
+      const typ = vyber([["movie", T.filmy], ["series", T.serialy], ["koncert", T.koncerty]], c.t);
+      typ.addEventListener("change", () => { c.t = typ.value; c.g = []; c.k = []; delete c.ov; vykresli(); });
+      if (c.t === "koncert") {   // jen název, žánry Last.fm a řazení; ověřuje se vždy
+        const kz = el("div", {className: "vk-zanry"});
+        for (const [id, n] of T.tagy) {
+          const box = el("input", {type: "checkbox", checked: (c.g || []).includes(id)});
+          box.addEventListener("change", () => {
+            c.g = (c.g || []).filter((x) => x !== id).concat(box.checked ? [id] : []);
+            nazev.placeholder = nazevAuto(c); uloz();
+          });
+          kz.append(el("label", {}, box, n));
+        }
+        const kzobraz = vyber(T.zobraz_k, c.z || "pool");
+        kzobraz.addEventListener("change", () => { c.z = kzobraz.value; uloz(); });
+        c.z = kzobraz.value;
+        const kodebrat = el("button", {type: "button", className: "male", textContent: T.odebrat});
+        kodebrat.addEventListener("click", () => { seznam.splice(i, 1); vykresli(); });
+        obal.append(el("div", {className: "vk-kat"},
+          el("div", {className: "dvojice"}, pole(T.nazev, nazev), pole(T.typ, typ)),
+          el("span", {className: "drobne", textContent: T.hudba, style: "display:block;margin:0 0 .35rem"}), kz,
+          el("span", {className: "drobne", textContent: T.hudba_n, style: "display:block;margin:0 0 .6rem"}),
+          pole(T.zobraz, kzobraz), kodebrat));
+        return;
+      }
       const zanry = el("div", {className: "vk-zanry"});
       const volby = T.zanry_v[c.t].map(([id, n]) => ["g", id, n]).concat([["k", "fairy", T.pohadky]]);
       for (const [druh, id, n] of volby) {
@@ -1089,6 +1118,7 @@ function nastaveni() {
   const out = {};
   for (const pole of form.elements) {
     if (!pole.name) continue;
+    if (pole.name === "lastfm_key" && $("lastfm-blok").hidden) continue;   // klíč jen s katalogem koncertů
     // checkbox jde do adresy vždy — odškrtnutý dřív chyběl a server dosadil výchozí „zapnuto“,
     // takže HellSpy šel zapnout, ale ne vypnout (2026-09-14)
     if (pole.type === "checkbox") out[pole.name] = pole.checked;

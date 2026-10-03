@@ -26,6 +26,7 @@ from .config import decode, fingerprint, from_environ, sources_summary
 from .katalogy import Katalogy
 from .core.lib import keepalive
 from .core.lib.dash_api import DashApi
+from .core.lib.tmdb_api import TmdbApi
 from .identita import Identita
 from .enginy import Enginy
 from .routes import Blokace, VERZE, Odpoved, Router, jazyk_z_hlavicky, klient_z_useragent
@@ -102,13 +103,14 @@ def bezpecna_cesta(path):
     return re.sub(r"^/c/([^/?]+)", otisk, path or "")
 
 
-def dash_lokalne(provoz, cache):
+def dash_lokalne(provoz, cache, tmdb=None):
     """Katalogy z dashboardu a `/discover`. Doplněk běží na témže stroji jako dashboard,
     takže se ptá přímo (mimo nginx a tunel) a prokáže se tokenem z `/traffic`.
     Bez tokenu (vlastní instance) jde na veřejnou adresu."""
     if not provoz.token or not provoz.url.endswith("/traffic"):
-        return DashApi(cache=cache)
-    return DashApi(cache=cache, base=provoz.url[:-len("/traffic")], headers={"X-Nokturno-Token": provoz.token})
+        return DashApi(cache=cache, tmdb=tmdb)
+    return DashApi(cache=cache, base=provoz.url[:-len("/traffic")], headers={"X-Nokturno-Token": provoz.token},
+                   tmdb=tmdb)
 
 
 def uklid_dat(data_dir, max_age_s=30 * 86400):
@@ -561,7 +563,9 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
     server = Server((host, port), Handler)
     # katalogy sdílí jednu cache pro všechny adresy; TMDB jen s klíčem instance (viz katalogy.py)
     provoz = Provoz.z_prostredi()
-    dash = dash_lokalne(provoz, enginy.spolecne)
+    tmdb_key = os.environ.get("NOKTURNO_TMDB_KEY", "").strip()
+    # s klíčem instance (`tmdb_key` v nokturno.json) jdou vlastní katalogy přímo na TMDB, server je záloha
+    dash = dash_lokalne(provoz, enginy.spolecne, TmdbApi(tmdb_key, cache=enginy.spolecne) if tmdb_key else None)
     katalogy = Katalogy(data_dir, os.environ.get("NOKTURNO_TMDB_KEY", ""), dash=dash)
     blokovane = {o.strip() for o in os.environ.get("NOKTURNO_BLOCKED_FINGERPRINTS", "").split(",") if o.strip()}
     server.router = Router(enginy, predvyplnit=predvyplnit, statistiky=Statistiky.z_prostredi(VERZE, data_dir=data_dir),

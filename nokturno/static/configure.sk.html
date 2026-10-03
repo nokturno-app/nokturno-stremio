@@ -72,6 +72,7 @@
   .karta { background: var(--panel); border: 1px solid var(--okraj); border-radius: 14px; padding: 1.1rem 1.2rem; margin: 0 0 .9rem; }
   .karta-hlava { display: flex; justify-content: space-between; align-items: flex-start; gap: .8rem; flex-wrap: wrap; margin-bottom: .35rem; }
   h3 { font-size: 1.05rem; margin: 0; }
+  #app-aktualizace h3 { margin: 1.4rem 0 .4rem; }
   .stitek { font-size: .72rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
             padding: .15rem .55rem; border-radius: 99px; border: 1px solid var(--okraj); color: var(--tlumene); white-space: nowrap; }
   .stitek.doporuceno { color: var(--akcent-svetly); border-color: var(--akcent); background: var(--doporuceno-pozadi); }
@@ -301,6 +302,7 @@
           <input type="text" id="novy-jmeno" maxlength="40" placeholder="napríklad Obývačka" spellcheck="false" required></label>
         <button type="button" id="zalozit">Založiť nový profil</button>
         <p class="vysledek chyba" id="zalozit-chyba" hidden></p>
+        <p class="pozn" id="bez-profilu" hidden><a href="#">Nechcem profily – adresa ponesie celé nastavenie ako predtým</a></p>
       </div>
     </div>
   </section>
@@ -738,8 +740,22 @@
 
   <!-- ============================== APLIKACE ============================== -->
   <section id="aplikace" hidden>
-    <h2><b>↻</b>Aktualizácia</h2>
-    <div id="app-aktualizace">
+    <h2><b>⚙</b>Aplikácia</h2>
+    <p class="popis">Toto vidí len správca aplikácie, nie kamaráti cez verejnú adresu.</p>
+    <div class="karta" id="app-volby">
+      <label class="prepinac">
+        <input type="checkbox" id="app-profily">
+        <span><strong>Profily</strong>
+          <small>Nastavenie sa ukladá v aplikácii a adresa doplnku nesie len kľúč profilu – zmeny platia bez nového pridania. Vypnuté = ako predtým: adresa nesie celé nastavenie vrátane hesiel a po každej zmene sa doplnok pridáva znova. Už uložené profily fungujú ďalej.</small></span>
+      </label>
+      <label class="pole"><span>Heslo k nastaveniu</span>
+        <span class="heslo"><input type="password" id="app-heslo" autocomplete="new-password" spellcheck="false" placeholder="bez hesla"></span></label>
+      <p class="popis">Chráni túto stránku a profily, keď je aplikácia dostupná z internetu. Doplnok v Stremiu heslo nechce. Prehliadač sa naň opýta pri otvorení nastavenia, meno môže byť ľubovoľné. Prázdne pole + Uložiť heslo zruší.</p>
+      <button type="button" class="male" id="app-ulozit-volby">Uložiť voľby aplikácie</button>
+      <div class="stav" id="app-volby-stav"></div>
+    </div>
+    <div id="app-aktualizace" hidden>
+      <h3>Aktualizácia</h3>
       <p class="popis">Aplikácia kontroluje aktualizácie sama pri štarte a potom každých 6 hodín. Reštart aplikácie spustí kontrolu tiež.</p>
       <button type="button" class="male" id="app-zkontrolovat">Skontrolovať aktualizácie</button>
       <div class="stav" id="app-verze"></div>
@@ -1615,8 +1631,34 @@ $("kopirovat").addEventListener("click", async () => {
 const APLIKACE = __APLIKACE__;
 const posliServeru = (cesta, telo) => fetch(ZAKLAD + cesta, {method: "POST", headers: {"X-Nokturno": "1"}, body: telo})
   .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
-if (APLIKACE.sprava && APLIKACE.aktualizace) {
+if (APLIKACE.sprava) {
   $("aplikace").hidden = false;
+  $("bez-profilu").hidden = false;
+  // první obrazovka: přepnout rovnou na starý režim (vrátit jde v sekci Aplikace)
+  $("bez-profilu").querySelector("a").addEventListener("click", async (e) => {
+    e.preventDefault();
+    try { await posliServeru("/aplikace", JSON.stringify({ profily: false })); location.reload(); }
+    catch { $("zalozit-chyba").textContent = "Profily sa nepodarilo vypnúť – skús to znova."; $("zalozit-chyba").hidden = false; }
+  });
+  $("app-profily").checked = APLIKACE.rezim_profily !== false;
+  const stavVoleb = (text, chyba = false) => { $("app-volby-stav").textContent = text; $("app-volby-stav").classList.toggle("chyba", chyba); };
+  stavVoleb(APLIKACE.ma_heslo ? "Heslo je nastavené. Nové heslo ho prepíše, prázdne pole ho zruší." : "Heslo nie je nastavené.");
+  $("app-ulozit-volby").addEventListener("click", async () => {
+    const volby = { profily: $("app-profily").checked }, heslo = $("app-heslo").value;
+    // heslo se mění jen vyplněním; prázdné pole ho zruší, jen když nějaké je a správce to potvrdí
+    if (heslo) volby.heslo = heslo;
+    else if (APLIKACE.ma_heslo && confirm("Naozaj zrušiť heslo k nastaveniu?")) volby.heslo = "";
+    try {
+      const d = await posliServeru("/aplikace", JSON.stringify(volby));
+      $("app-heslo").value = "";
+      if (d.rezim_profily !== APLIKACE.rezim_profily) { stavVoleb("Uložené, stránka sa obnoví…"); location.reload(); return; }
+      APLIKACE.ma_heslo = d.ma_heslo;
+      stavVoleb("Uložené. " + (d.ma_heslo ? "Heslo je nastavené. Nové heslo ho prepíše, prázdne pole ho zruší." : "Heslo nie je nastavené."));
+    } catch { stavVoleb("Uložiť sa nepodarilo.", true); }
+  });
+}
+if (APLIKACE.sprava && APLIKACE.aktualizace) {
+  $("app-aktualizace").hidden = false;
   const verze = $("app-verze");
   const nacti = (znovu) => fetch(ZAKLAD + "/aktualizace" + (znovu ? "?znovu=1" : "")).then((r) => r.json());
   const ukaz = (d) => {

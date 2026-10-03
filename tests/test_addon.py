@@ -3109,7 +3109,8 @@ class TestPrepinacStatistik(unittest.TestCase):
         r.statistiky = mock.Mock(zapnuto=True)
         r.pady = mock.Mock(zapnuto=True)
         odp = r.post("/aplikace", json.dumps({"stats": False}), {"X-Nokturno": "1"})
-        self.assertEqual(odp.data, {"soukroma": False, "aktualizace": False, "stats": False, "crash_reports": True})
+        self.assertEqual(odp.data, {"soukroma": False, "aktualizace": False, "stats": False, "crash_reports": True,
+                                    "rezim_profily": True, "ma_heslo": False})
         self.assertFalse(r.statistiky.zapnuto)
         self.assertEqual(soukroma.nacti_aplikaci(tmp), {"stats": False})
         self.assertEqual(r.post("/aplikace", "{}", {"X-Nokturno": "1", "Cf-Connecting-IP": "1.1.1.1"}).status, 403)
@@ -3344,6 +3345,26 @@ class TestProfily(unittest.TestCase):
         self.assertFalse(server.heslo_sedi(hlavicka("x:spatne"), "tajne"))
         self.assertFalse(server.heslo_sedi(None, "tajne"))
         self.assertFalse(server.heslo_sedi("Basic ???", "tajne"))
+
+    def test_profily_a_heslo_v_nastaveni(self):
+        import base64
+        from nokturno import server, soukroma
+        r = self.r
+        tmp = r.enginy.data_dir
+        odp = r.post("/aplikace", json.dumps({"profily": False, "heslo": "tajne"}), {"X-Nokturno": "1"})
+        self.assertEqual((odp.data["rezim_profily"], odp.data["ma_heslo"]), (False, True))
+        self.assertTrue(r.profily_vypnute)
+        ulozeno = soukroma.nacti_aplikaci(tmp)
+        self.assertFalse(ulozeno["profily"])
+        self.assertTrue(ulozeno["heslo"].startswith("pbkdf2$"))   # holé heslo se neukládá
+        self.assertNotIn("tajne", json.dumps(ulozeno))
+        hlavicka = lambda h: "Basic " + base64.b64encode(h.encode()).decode()
+        self.assertTrue(server.heslo_sedi(hlavicka("x:tajne"), r.heslo))
+        self.assertFalse(server.heslo_sedi(hlavicka("x:spatne"), r.heslo))
+        # prázdné heslo ho zruší, profily zpět
+        odp = r.post("/aplikace", json.dumps({"profily": True, "heslo": ""}), {"X-Nokturno": "1"})
+        self.assertEqual((odp.data["rezim_profily"], odp.data["ma_heslo"]), (True, False))
+        self.assertFalse(r.profily_vypnute)
 
     def test_qr_svg(self):
         from nokturno import profily

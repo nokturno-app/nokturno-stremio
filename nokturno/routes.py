@@ -71,7 +71,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "9.9.1"
+VERZE = "9.9.2"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián
@@ -488,13 +488,18 @@ class Router:
     def aplikace(self):
         return {"soukroma": self.povolena is not None, "aktualizace": bool(self.UPDATE_URL),
                 "stats": bool(self.statistiky and self.statistiky.zapnuto),
-                "crash_reports": bool(self.pady and self.pady.zapnuto)}
+                "crash_reports": bool(self.pady and self.pady.zapnuto),
+                "rezim_profily": not self.profily_vypnute, "ma_heslo": bool(self.heslo)}
 
     def nastav_aplikaci(self, volby):
         if "stats" in volby and self.statistiky is not None:
             self.statistiky.zapnuto = bool(volby["stats"])
         if "crash_reports" in volby and self.pady is not None:
             self.pady.zapnuto = bool(volby["crash_reports"])
+        if "profily" in volby:
+            self.profily_vypnute = not volby["profily"]
+        if "heslo" in volby:
+            self.heslo = str(volby["heslo"] or "")
 
     def post(self, cesta, telo, headers, zaklad=""):
         """POST jen z formuláře mimo proxy. Vlastní hlavička `X-Nokturno` vynutí u cizího webu
@@ -558,8 +563,14 @@ class Router:
         if cesta == "/aplikace":
             try:
                 data = json.loads(telo or "{}")
-                zmeny = {k: bool(data[k]) for k in ("stats", "crash_reports") if k in data}
-            except (ValueError, TypeError):
+                zmeny = {k: bool(data[k]) for k in ("stats", "crash_reports", "profily") if k in data}
+                if "heslo" in data:
+                    # prázdné = bez hesla; jinak jen hash, holé heslo se nikam neukládá
+                    heslo = str(data["heslo"] or "")
+                    if len(heslo) > 200:
+                        return chyba(400, "Heslo je moc dlouhé.")
+                    zmeny["heslo"] = soukroma.hash_hesla(heslo) if heslo else ""
+            except (ValueError, TypeError, AttributeError):
                 return chyba(400, "Nečitelné volby.")
             soukroma.uloz_aplikaci(self.enginy.data_dir, zmeny)
             self.nastav_aplikaci(zmeny)

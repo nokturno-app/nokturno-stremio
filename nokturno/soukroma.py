@@ -12,10 +12,12 @@ Požadavek, který přišel přes Cloudflare (hlavička `Cf-Connecting-IP`), je 
 na soukromé instanci smí jen na cesty doplňku, formulář ani `/povolit` nedostane.
 Hlavní ochrana je v nginx, tohle je druhá pojistka.
 
-`aplikace.json` drží volby aplikace, které jde změnit na `/configure` (statistiky
-a hlášení o pádech) — na Androidu `nokturno.json` upravit nejde. Má přednost před
-prostředím.
+`aplikace.json` drží volby aplikace, které jde změnit na `/configure` (statistiky,
+hlášení o pádech, profily a heslo k nastavení) — na Androidu `nokturno.json` upravit
+nejde. Má přednost před prostředím. Heslo je v něm jen jako hash (`hash_hesla`).
 """
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -104,5 +106,27 @@ def uloz_aplikaci(data_dir, zmeny):
     cesta = os.path.join(data_dir, APLIKACE)
     with open(cesta + ".tmp", "w", encoding="utf-8") as f:
         json.dump(data, f)
+    try:
+        os.chmod(cesta + ".tmp", 0o600)   # nese hash hesla k nastavení
+    except OSError:
+        pass   # Windows / FAT
     os.replace(cesta + ".tmp", cesta)
     return data
+
+
+def hash_hesla(heslo):
+    """Heslo k nastavení do `aplikace.json`: `pbkdf2$<sůl>$<hash>`."""
+    sul = os.urandom(16).hex()
+    return "pbkdf2$" + sul + "$" + hashlib.pbkdf2_hmac("sha256", heslo.encode("utf-8"), bytes.fromhex(sul), 200_000).hex()
+
+
+def heslo_odpovida(zadane, ulozene):
+    """`ulozene` je hash z `hash_hesla`, nebo holé heslo z `NOKTURNO_HESLO`."""
+    if ulozene.startswith("pbkdf2$"):
+        _, sul, hodnota = ulozene.split("$", 2)
+        try:
+            vypocet = hashlib.pbkdf2_hmac("sha256", zadane.encode("utf-8"), bytes.fromhex(sul), 200_000).hex()
+        except ValueError:
+            return False
+        return hmac.compare_digest(vypocet, hodnota)
+    return hmac.compare_digest(zadane.encode("utf-8"), ulozene.encode("utf-8"))

@@ -34,6 +34,7 @@ from .overovani import Overovani
 from .pady import Pady
 from .provoz import Provoz
 from . import cztor, kliky as kliky_zprav, sit, soukroma, tls
+from . import spravce as spravce_mod
 
 _LOGGER = logging.getLogger("nokturno")
 
@@ -362,6 +363,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
         if odpoved.location:
             self.send_header("Location", odpoved.location)
+        for jmeno, hodnota in getattr(odpoved, "hlavicky", ()):
+            self.send_header(jmeno, hodnota)
         self.send_header("Content-Type", typ)
         self.send_header("Content-Length", str(len(telo)))
         self._cors()
@@ -403,7 +406,8 @@ class Handler(BaseHTTPRequestHandler):
             aplikace = klient_z_useragent(self.headers.get("User-Agent"))
             odpoved = self.server.router.route(self.path, self._zaklad(), verejny=verejny, jazyk=jazyk,
                                                klient=self._klient(), aplikace=aplikace,
-                                               z_proxy=soukroma.z_proxy(self.headers))
+                                               z_proxy=soukroma.z_proxy(self.headers), hlavicky=self.headers,
+                                               doma=spravce_mod.bez_kodu(self.client_address[0], self.headers))
             if getattr(odpoved, "proxy", None):
                 self._proxy(*odpoved.proxy)
             else:
@@ -440,7 +444,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._posli(Odpoved(status=413, text=""))
                 return
             telo = self.rfile.read(delka).decode("utf-8", "replace")
-            self._posli(self.server.router.post(self.path, telo, self.headers, zaklad=self._zaklad()))
+            self._posli(self.server.router.post(self.path, telo, self.headers, zaklad=self._zaklad(),
+                                                doma=spravce_mod.bez_kodu(self.client_address[0], self.headers)))
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, ssl.SSLError):
             pass
         except Exception:  # noqa: BLE001 – žádná chyba nesmí ukončit službu
@@ -577,6 +582,10 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
     server.router.profily_vypnute = os.environ.get("NOKTURNO_PROFILY", "").strip().lower() in ("0", "false", "ne", "no")
     server.router.heslo = os.environ.get("NOKTURNO_HESLO", "")   # volitelné heslo k formuláři a profilům
     server.router.nastav_aplikaci(soukroma.nacti_aplikaci(data_dir))   # volby z /configure mají přednost
+    server.router.spravce = spravce_mod.Spravce(data_dir)
+    if server.router.spravce.kod:
+        _LOGGER.warning("Aplikace zatím nemá správce. Otevři /configure a nastav heslo správce. "
+                        "Mimo domácí síť chce stránka kód: %s", server.router.spravce.kod)
     server.router.sdilena = os.environ.get("NOKTURNO_SDILENA", "").strip().lower() in ("1", "true", "ano", "yes")
     if server.router.sdilena:
         _LOGGER.info("sdílená instance: nastavení a ukládání profilů i z internetu")

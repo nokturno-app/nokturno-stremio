@@ -123,6 +123,10 @@
   .taby { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 .8rem; }
   .taby button { padding: .4rem .8rem; border: 1px solid var(--okraj); border-radius: 8px; background: var(--panel-2); color: var(--text); font-size: .88rem; cursor: pointer; }
   .taby button[aria-selected="true"] { background: var(--akcent); color: #fff; border-color: var(--akcent); }
+  .vk-taby { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 .4rem; }
+  .vk-taby button { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .4rem .8rem; border: 1px solid var(--okraj);
+    border-radius: 8px; background: var(--panel-2); color: var(--text); font-size: .88rem; cursor: pointer; }
+  .vk-taby button[aria-selected="true"] { background: var(--akcent); color: #fff; border-color: var(--akcent); }
   .tecka { display: inline-block; width: 7px; height: 7px; margin-left: .4rem; vertical-align: middle; border-radius: 50%; background: var(--ok); }
   .tecka[hidden] { display: none; }
   /* lišta zdrojů drží nahoře, dokud je sekce zdrojů na obrazovce */
@@ -1065,7 +1069,7 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
                "it": ["IT"], "pl": ["PL"], "hu": ["HU"], "ko": ["KR"], "ja": ["JP"], "en": ["US", "GB"]};   // = mycat.migrate_lang
   const SPOL = {sort: "s", years: "posl", verify: "ov", q: "q", audio: "a", subs: "ti", surround: "ch", show: "z", join: "j",
                 genres: "g", keywords: "k", countries: "zeme"};   // pole šablony (mycat) → pole `vk`
-  let seznam = [], hotovo = false;   // prekresli() před koncem skriptu sahá na ještě nedefinované `adresa`
+  let seznam = [], hotovo = false, aktivni = 0, taby = [];   // aktivni = katalog otevřený v záložce   // prekresli() před koncem skriptu sahá na ještě nedefinované `adresa`
   try { seznam = JSON.parse(skryte.value || "[]"); } catch (e) { seznam = []; }
   if (!Array.isArray(seznam)) seznam = [];
   seznam = seznam.filter((c) => c && c.t !== "koncert");
@@ -1101,14 +1105,27 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
     return c;
   }
   function uloz() {
-    const cista = seznam.map((c) => ({...c, n: (c.n || "").trim() || nazevAuto(c)}));
+    const cista = seznam.map((c) => ({...c, sab: undefined, n: (c.n || "").trim() || nazevAuto(c)}));   // `sab` = jen pro select šablony
     skryte.value = cista.length ? JSON.stringify(cista) : "";
     pridat.hidden = seznam.length >= MAX;
+    taby.forEach((b, i) => { b.textContent = cista[i] ? (i + 1) + ". " + cista[i].n : ""; b.title = b.textContent; });
     if (hotovo) prekresli();
   }
   function vykresli() {
     obal.replaceChildren();
+    aktivni = Math.max(0, Math.min(aktivni, seznam.length - 1));
+    // každý katalog vlastní záložka (jako zdroje), ať je jasné, kde jeden končí a druhý začíná
+    const lista = el("div", {className: "vk-taby", role: "tablist"});
+    taby = seznam.map((c, i) => {
+      const b = el("button", {type: "button", role: "tab"});
+      b.setAttribute("aria-selected", i === aktivni ? "true" : "false");
+      b.addEventListener("click", () => { aktivni = i; vykresli(); });
+      return b;
+    });
+    lista.append(...taby);
+    if (seznam.length) obal.append(lista);
     seznam.forEach((c, i) => {
+      if (i !== aktivni) return;
       c.t = c.t === "series" ? "series" : "movie";
       if (c.l && !(c.zeme || []).length) { c.zeme = L2Z[c.l] || []; }   // starý „původní jazyk“ → země původu
       delete c.l;
@@ -1118,10 +1135,10 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
       nazev.addEventListener("input", () => { c.n = nazev.value; rucne = nazev.value.trim() !== ""; uloz(); });
       const typ = vyber([["movie", T.filmy], ["series", T.serialy]], c.t);
       typ.addEventListener("change", () => { c.t = typ.value; c.g = []; vykresli(); });
-      const sablona = vyber([["", T.sablona_zadna]].concat(SABLONY.filter((s) => s.kind === c.t).map((s) => [s.key, s.name])), "");
+      const sablona = vyber([["", T.sablona_zadna]].concat(SABLONY.filter((s) => s.kind === c.t).map((s) => [s.key, s.name])), c.sab || "");
       sablona.addEventListener("change", () => {
         const s = SABLONY.find((x) => x.key === sablona.value);
-        if (s) { seznam[i] = zeSablony(s); vykresli(); }
+        if (s) { seznam[i] = Object.assign(zeSablony(s), {sab: s.key}); vykresli(); }
       });
       const zaskrtavatka = (volby, klic, max) => {
         const obalZ = el("div", {className: "vk-zanry"});
@@ -1186,7 +1203,7 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
           el("span", {className: "drobne", textContent: napoveda})));
       };
       const odebrat = el("button", {type: "button", className: "male", textContent: T.odebrat});
-      odebrat.addEventListener("click", () => { seznam.splice(i, 1); vykresli(); });
+      odebrat.addEventListener("click", () => { seznam.splice(i, 1); aktivni = i - 1; vykresli(); });
       const popisek = (t) => el("span", {className: "drobne", textContent: t, style: "display:block;margin:0 0 .35rem"});
       obal.append(el("div", {className: "vk-kat"},
         el("div", {className: "dvojice"}, pole(T.typ, typ), pole(T.sablona, sablona)),
@@ -1200,7 +1217,7 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
     });
     uloz();
   }
-  pridat.addEventListener("click", () => { if (seznam.length < MAX) { seznam.push({t: "movie", g: [], k: [], j: "and", s: "popularity.desc"}); vykresli(); } });
+  pridat.addEventListener("click", () => { if (seznam.length < MAX) { seznam.push({t: "movie", g: [], k: [], j: "and", s: "popularity.desc"}); aktivni = seznam.length - 1; vykresli(); } });
   vykresli();
   hotovo = true;
 })();

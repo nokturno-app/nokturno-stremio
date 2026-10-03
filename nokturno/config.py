@@ -82,9 +82,15 @@ VK_KLIC = "vk"
 VK_MAX = 20   # nastavení je v profilu, ne v adrese; ověřované katalogy se počítají do `mycat.MAX_VERIFIED` na zařízení
 VK_KLICOVA_SLOVA = {"fairy": "3205|329731|358931|351899"}   # pohádky: TMDB je má jen jako klíčové slovo
 LASTFM_RE = re.compile(r"^[0-9a-f]{1,64}$")
-VK_RAZENI = ("popularity.desc", "vote_average.desc", "primary_release_date.desc")
+VK_RAZENI = ("popularity.desc", "vote_average.desc", "primary_release_date.desc", mycat_lib.ALPHA)
 # žánry koncertů (štítky Last.fm, `concertcat.TAGS`) oddělené čárkou; prázdné = koncerty vypnuté
 KONCERTY_KLIC = "koncerty_zanry"
+# volitelné katalogy TMDB z karty Katalogy (do 10.0.0b2) → vlastní katalogy v režimu Katalog z TMDB
+STARE_TMDB = {"tmdb.popularni.filmy": ("movie", "popularity.desc", "Populární filmy", "Populárne filmy"),
+              "tmdb.nejlepsi.filmy": ("movie", "vote_average.desc", "Nejlépe hodnocené filmy", "Najlepšie hodnotené filmy"),
+              "tmdb.popularni.serialy": ("series", "popularity.desc", "Populární seriály", "Populárne seriály"),
+              "tmdb.nejlepsi.serialy": ("series", "vote_average.desc", "Nejlépe hodnocené seriály",
+                                        "Najlepšie hodnotené seriály")}
 # klíče, u kterých engine čeká pravdivostní hodnotu, ne řetězec
 LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d", "hide_lowq")
 
@@ -152,6 +158,7 @@ def from_mapping(raw):
         else:
             options[key] = str(value).strip()
 
+    _stare_tmdb(options)
     if stare_koncerty and KONCERTY_KLIC not in options:
         options[KONCERTY_KLIC] = ",".join(koncerty_zanry(stare_koncerty))
     # „nezáleží" nese formulář jako ANY: prázdnou hodnotu by z adresy zahodil a server
@@ -226,6 +233,28 @@ def _seznam(value):
     return value if isinstance(value, list) else []
 
 
+def _stare_tmdb(options):
+    """Populární a Nejlépe hodnocené z karty Katalogy se převedou na vlastní katalogy (karta zmizela)."""
+    kusy = [k for k in str(options.get("katalogy") or "").split(",") if k]
+    stare = [k for k in kusy if k in STARE_TMDB]
+    if not stare:
+        return
+    vk = vlastni_katalogy(options.get(VK_KLIC))
+    mame = {(c["t"], c.get("s"), tuple(c.get("g") or ()), c.get("ov")) for c in vk}
+    for k in stare:
+        typ, razeni, cs, sk = STARE_TMDB[k]
+        if (typ, razeni, (), None) not in mame and len(vk) < VK_MAX:
+            vk.append({"n": sk if options.get(JAZYK_KLIC) == "sk" else cs, "t": typ, "g": [], "k": [], "j": "and",
+                       "s": razeni})
+    zbytek = [k for k in kusy if k not in STARE_TMDB]
+    if zbytek:
+        options["katalogy"] = ",".join(zbytek)
+    else:
+        options.pop("katalogy", None)
+    if vk:
+        options[VK_KLIC] = json.dumps(vlastni_katalogy(vk), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
 def _stare_koncerty(value):
     """Žánry koncertních katalogů bety 1 z hodnoty `vk`."""
     return [str(t) for c in _seznam(value) if isinstance(c, dict) and c.get("t") == "koncert" for t in c.get("g") or []]
@@ -252,7 +281,8 @@ def vk_parametry(c):
               "with_keywords": "|".join(VK_KLICOVA_SLOVA[k] for k in c.get("k") or []),
               "with_origin_country": "|".join(c.get("zeme") or []),
               "with_original_language": "" if c.get("zeme") else c.get("l") or "", "year_from": year_from,
-              "year_to": year_to, "sort_by": c.get("s") or ""}
+              "year_to": year_to,
+              "sort_by": "popularity.desc" if c.get("s") == mycat_lib.ALPHA else c.get("s") or ""}
     return {k: v for k, v in params.items() if v}
 
 

@@ -3633,3 +3633,16 @@ class TestSpravce(unittest.TestCase):
         self.assertEqual(self._post("/aplikace", {"stats": True}, sprava).status, 403)
         self.assertEqual(self._post("/aplikace", {"stats": True}, {"Cookie": nova}).status, 200)
 
+
+
+class TestStareKatalogyTmdb(unittest.TestCase):
+    """Karta Katalogy zmizela: Populární a Nejlépe hodnocené ze staré adresy se převedou na vlastní katalogy."""
+
+    def test_prevod_na_vlastni(self):
+        from nokturno import config
+        opts = config.from_mapping({"katalogy": "tmdb.popularni.filmy,tmdb.nejlepsi.serialy,trend.nejsledovanejsi.filmy"})
+        self.assertEqual(opts.get("katalogy"), "trend.nejsledovanejsi.filmy")
+        vk = config.vlastni_katalogy(opts.get(config.VK_KLIC))
+        self.assertEqual(sorted((c["t"], c["s"]) for c in vk), [("movie", "popularity.desc"), ("series", "vote_average.desc")])
+        self.assertEqual(config.from_mapping({"vk": opts[config.VK_KLIC], "katalogy": "tmdb.popularni.filmy"})[config.VK_KLIC],
+                         opts[config.VK_KLIC], "podruhé nic nepřibude")

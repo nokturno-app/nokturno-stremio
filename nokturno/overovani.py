@@ -148,7 +148,7 @@ class Overovani:
             return False
 
     def _pool(self, options, cat):
-        return pool_for(self.dash, cat["t"], config.vk_parametry(cat))
+        return pool_for(self.dash, cat["t"], config.vk_parametry(cat), alpha=cat.get("s") == config.mycat_lib.ALPHA)
 
     def _uklid_souboru(self, now):
         try:

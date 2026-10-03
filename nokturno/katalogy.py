@@ -36,6 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 from . import config
 
 from .core.lib import concertcat
+from .core.lib import mycat as mycat_lib
 from .core.lib.sosac_direct import SosacDirect
 from .core.lib.store import Store
 from .core.lib.tmdb_api import TmdbApi
@@ -257,6 +258,9 @@ class Katalogy:
 
     def _vlastni_polozky(self, typ, cat, skip):
         """Náhledy `skip`–`skip+100` vlastního katalogu; stránky dashboardu souběžně."""
+        if cat.get("s") == mycat_lib.ALPHA:   # nejoblíbenější podle filtrů, seřazené podle abecedy (stránky mají cache)
+            pool = mycat_lib.pool_for(self.dash, typ, config.vk_parametry(cat), alpha=True) or []
+            return [p for p in (nahled(typ, m) for m in pool) if p][skip:skip + STRANKA_VK]
         return self._discover_polozky(typ, config.vk_parametry(cat), skip)
 
     def _discover_polozky(self, typ, params, skip):

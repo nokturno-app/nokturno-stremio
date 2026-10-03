@@ -8,6 +8,8 @@ stejný vzor, jakým dnes integrace pro Home Assistant pouští jádro v executo
     python3 -m nokturno.server --port 7127
 """
 import argparse
+import base64
+import hmac
 import logging
 import os
 import re
@@ -163,6 +165,26 @@ def _udrzba_smycka(data_dir, interval_s=3600):
                 _LOGGER.info("úklid cache: %d prošlých souborů", smazano)
         except Exception:
             _LOGGER.exception("úklid cache selhal")
+
+
+def potrebuje_heslo(cesta, router):
+    """Formulář, profily a správa chtějí heslo (`NOKTURNO_HESLO`); úvodní stránka a cesty doplňku nikdy."""
+    if not getattr(router, "heslo", ""):   # getattr: zkušební směrovače v testech heslo nemají
+        return False
+    return bool(router._formular(cesta) or cesta in Router.PROFILY_CESTY
+                or cesta in ("/povolit", "/aplikace", "/aktualizace"))
+
+
+def heslo_sedi(hlavicka, heslo):
+    """`Authorization: Basic base64("<cokoli>:<heslo>")`; jméno se nekontroluje."""
+    try:
+        typ, _, data = (hlavicka or "").partition(" ")
+        if typ.lower() != "basic":
+            return False
+        zadane = base64.b64decode(data.strip(), validate=True).decode("utf-8").partition(":")[2]
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return hmac.compare_digest(zadane.encode("utf-8"), heslo.encode("utf-8"))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -355,11 +377,26 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(telo)
             self._zapsano += len(telo)
 
+    def _vyzvi_k_heslu(self):
+        """401 s výzvou k heslu; True = odpověď odešla a obsluha končí."""
+        cesta = urllib.parse.urlsplit(self.path).path
+        router = self.server.router
+        if not potrebuje_heslo(cesta, router) or heslo_sedi(self.headers.get("Authorization"), router.heslo):
+            return False
+        self.send_response(401)
+        self._odeslano = True
+        self.send_header("WWW-Authenticate", 'Basic realm="Nokturno", charset="UTF-8"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return True
+
     # --- metody -----------------------------------------------------------
     def do_GET(self):
         self._odeslano = False
         self._zacni()
         try:
+            if self._vyzvi_k_heslu():
+                return
             verejny = je_verejny(self.headers, self.client_address[0])
             self._verejny = verejny
             jazyk = jazyk_z_hlavicky(self.headers.get("Accept-Language"))
@@ -396,6 +433,8 @@ class Handler(BaseHTTPRequestHandler):
         self._odeslano = False
         self._zacni()
         try:
+            if self._vyzvi_k_heslu():
+                return
             delka = int(self.headers.get("Content-Length") or 0)
             if not 0 <= delka <= 64 * 1024:
                 self._posli(Odpoved(status=413, text=""))
@@ -535,6 +574,9 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
     if os.environ.get("NOKTURNO_SOUKROMA", "").strip().lower() in ("1", "true", "ano", "yes"):
         server.router.povolena = soukroma.Povolena(data_dir)
         _LOGGER.info("soukromá instance: povolená nastavení v %s", server.router.povolena.cesta)
+    # NOKTURNO_PROFILY=0: starý režim bez profilů, adresa doplňku nese celé nastavení
+    server.router.profily_vypnute = os.environ.get("NOKTURNO_PROFILY", "").strip().lower() in ("0", "false", "ne", "no")
+    server.router.heslo = os.environ.get("NOKTURNO_HESLO", "")   # volitelné heslo k formuláři a profilům
     server.router.sdilena = os.environ.get("NOKTURNO_SDILENA", "").strip().lower() in ("1", "true", "ano", "yes")
     if server.router.sdilena:
         _LOGGER.info("sdílená instance: nastavení a ukládání profilů i z internetu")

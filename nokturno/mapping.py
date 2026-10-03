@@ -205,9 +205,9 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
     # i HDR10 ukáže obojí – na TV bez Dolby Vision (Samsung) hraje jako HDR10.
     znacky = [z for z in obraz if z == "DV"] + hdr or obraz[:1]
     vlevo = kvalita + (" " + " • ".join(znacky) if znacky else "")
-    # nahrávka z kina je vždy vidět: první řádek CAM, pod ním kvalita
+    # nahrávka z kina je vždy vidět, za kvalitou na tomtéž řádku – vlastní řádek ubíral místo
     if popis.get("lowq"):
-        vlevo = "🎥 CAM" + ("\n" + vlevo if vlevo else "")
+        vlevo = (vlevo + " " if vlevo else "") + "🎥 CAM"
     objekt = {
         "url": odkaz_streamu(vnitrni, odkaz),
         # bez „Nokturno“ nad kvalitou – v úzkém sloupci jen ubíral místo; doplněk

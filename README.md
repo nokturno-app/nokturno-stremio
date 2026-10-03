@@ -97,6 +97,9 @@ použít kdokoli. V `nokturno.json`:
 - `public_url` (prostředí `NOKTURNO_PUBLIC_URL`, v příkazové řádce `--public-url`): veřejná adresa doplňku,
   kterou ukáže `/configure` (např. `https://nokturno.example.cz`). Hodí se, když se formulář otevírá jinudy
   než přes veřejnou adresu (Tailscale, domácí síť). Bez ní se adresa bere z požadavku.
+- `NOKTURNO_PROFILY=0`: starý režim bez profilů – adresa doplňku nese celé nastavení včetně hesel.
+  Už uložené profily se dál čtou, nové nejdou zakládat, ukládat, přejmenovat ani mazat.
+- `NOKTURNO_HESLO`: heslo k nastavení a profilům (HTTP Basic, jméno libovolné). Doplněk sám heslo nechce.
 
 Jak nastavení povolit:
 

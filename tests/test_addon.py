@@ -3508,7 +3508,7 @@ class TestKatalogKoncertu(unittest.TestCase):
         k.overovani = ov
         pool = [{"id": "a:metallica", "name": "Metallica", "tags": ["metal"]}, {"id": "a:nikdo", "name": "Nikdo", "tags": ["rock"]}]
         hledani = lambda e, artist, rivals=(), stop=None: (soubory or self.SOUBORY) if artist == "Metallica" else []
-        patcher = (mock.patch.object(concertcat, "pool", lambda key, tags: pool),
+        patcher = (mock.patch.object(concertcat, "pool", lambda key, tags, page=1: pool if page == 1 else []),
                    mock.patch.object(concertcat, "search", hledani))
         for p in patcher:
             p.start()

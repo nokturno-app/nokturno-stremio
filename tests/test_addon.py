@@ -1061,7 +1061,7 @@ class TestVlastniUloziste(unittest.TestCase):
         class Smerovac:
             hlavicka = "Basic x"   # ne `heslo` – to je atribut Routeru (NOKTURNO_HESLO)
 
-            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
+            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False, **_):
                 return Odpoved(proxy=(adresa, {"Authorization": self.hlavicka}))
         srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         srv.router = Smerovac()
@@ -1495,7 +1495,7 @@ class TestFormularBezCizihoSkriptu(unittest.TestCase):
         from nokturno.server import Handler
 
         class Smerovac:
-            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
+            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False, **_):
                 return Odpoved(html="<p>x</p>") if cesta.endswith("/configure") else Odpoved(data={"ok": True})
         srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         srv.router = Smerovac()
@@ -1529,7 +1529,7 @@ class TestCspProKontroluDns(unittest.TestCase):
         from nokturno.server import Handler
 
         class Smerovac:
-            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
+            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False, **_):
                 return Odpoved(html="<p>x</p>")
         srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         srv.router = Smerovac()
@@ -2078,7 +2078,7 @@ class TestHeadAProxyKodovani(unittest.TestCase):
         volani = []
 
         class Smerovac:
-            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
+            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False, **_):
                 volani.append(cesta)
                 return Odpoved(data={"ok": True})
         srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -3315,7 +3315,7 @@ class TestProfily(unittest.TestCase):
         self.assertEqual(self.r.post("/profily", "{}", cf).status, 200)
         self.assertEqual(self.r.post("/profil/jmeno", json.dumps({"klic": klic, "jmeno": "Kamarád"}), cf).status, 200)
         self.assertEqual(self.r.post("/povolit", KOUSEK, cf).status, 403)
-        self.assertEqual(self.r.route("/aktualizace", ZAKLAD, z_proxy=True).status, 403)
+        self.assertEqual(self.r.route("/aktualizace", ZAKLAD, z_proxy=True).status, 404)   # správa jen správci
 
     def test_vypnute_profily_stary_rezim(self):
         klic = self._uloz().data["klic"]
@@ -3382,3 +3382,75 @@ class TestProfily(unittest.TestCase):
             t = (st / jm).read_text(encoding="utf-8")
             for s in ("__ADRESA__", "stremio://", "nuvio://"):
                 self.assertIn(s, t, (jm, s))
+
+
+class TestSpravce(unittest.TestCase):
+    """9.12.0: správce aplikace podle hesla, ne podle sítě."""
+
+    def setUp(self):
+        from nokturno.enginy import Enginy
+        from nokturno import spravce
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.r = Router(Enginy(self.tmp.name, {}))
+        self.r.spravce = spravce.Spravce(self.tmp.name)
+        self.hl = {"X-Nokturno": "1"}
+
+    def _post(self, cesta, data, hlavicky=None, doma=False):
+        return self.r.post(cesta, json.dumps(data), {**self.hl, **(hlavicky or {})}, zaklad="https://x.cz", doma=doma)
+
+    def _cookie(self, odp):
+        return dict(odp.hlavicky)["Set-Cookie"].split(";")[0]
+
+    def test_bez_spravce_nejde_profil_ani_sprava(self):
+        self.assertTrue(self.r.spravce.kod)
+        self.assertEqual(self._post("/profil", {"nastaveni": KOUSEK}).status, 403)
+        self.assertEqual(self._post("/aplikace", {"stats": False}).status, 403)
+        html = self.r.route("/configure", ZAKLAD, doma=False).html.replace(" ", "")
+        self.assertIn('"spravce_nastaven":false', html)
+        self.assertIn('"kod_potreba":true', html)
+        self.assertIn('"sprava":false', html)
+
+    def test_nastaveni_mimo_domov_chce_kod(self):
+        from nokturno import spravce, soukroma
+        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "tajne123", "kod": "XXXX-XXXX"}).status, 403)
+        odp = self._post("/spravce/nastavit", {"heslo": "tajne123", "kod": self.r.spravce.kod.lower()})
+        self.assertEqual(odp.status, 200)
+        self.assertIn("HttpOnly", dict(odp.hlavicky)["Set-Cookie"])
+        self.assertIn("Secure", dict(odp.hlavicky)["Set-Cookie"])
+        self.assertTrue(soukroma.nacti_aplikaci(self.tmp.name)["spravce"].startswith("pbkdf2$"))
+        self.assertEqual(self.r.spravce.kod, "")
+        # druhé nastavení už nejde, po restartu se heslo načte
+        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "jine1234"}, doma=True).status, 400)
+        self.assertTrue(spravce.Spravce(self.tmp.name).nastaveno)
+
+    def test_doma_bez_kodu_a_kratke_heslo(self):
+        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "kratk"}, doma=True).status, 400)
+        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "tajne123"}, doma=True).status, 200)
+
+    def test_spravce_vidi_vse_kamarad_jen_sve(self):
+        self._post("/spravce/nastavit", {"heslo": "tajne123"}, doma=True)
+        kamarad = self._post("/profil", {"nastaveni": KOUSEK}).data["klic"]
+        cizi = self._post("/profil", {"nastaveni": KOUSEK}).data["klic"]
+        self.assertEqual([p["klic"] for p in self._post("/profily", {"klice": [kamarad]}).data["profily"]], [kamarad])
+        self.assertEqual(self._post("/profily", {}).data["profily"], [])
+        self.assertEqual(self._post("/aplikace", {"stats": False}).status, 403)
+        self.assertEqual(self._post("/spravce/prihlasit", {"heslo": "spatne"}).status, 403)
+        cookie = self._cookie(self._post("/spravce/prihlasit", {"heslo": "tajne123"}))
+        sprava = {"Cookie": "x=1; " + cookie}
+        self.assertEqual({p["klic"] for p in self._post("/profily", {}, sprava).data["profily"]}, {kamarad, cizi})
+        self.assertEqual(self._post("/aplikace", {"stats": False}, sprava).status, 200)
+        self.assertIn('"sprava":true', self.r.route("/configure", ZAKLAD, hlavicky=sprava).html.replace(" ", ""))
+        # změna hesla zneplatní staré přihlášení a vydá nové
+        nova = self._cookie(self._post("/aplikace", {"spravce_heslo": "nove12345"}, sprava))
+        self.assertEqual(self._post("/aplikace", {"stats": True}, sprava).status, 403)
+        self.assertEqual(self._post("/aplikace", {"stats": True}, {"Cookie": nova}).status, 200)
+
+    def test_doma_pozna_jen_mistni_adresu_bez_proxy(self):
+        from nokturno.spravce import bez_kodu
+        self.assertTrue(bez_kodu("127.0.0.1", {}))
+        self.assertTrue(bez_kodu("192.168.1.5", {}))
+        self.assertTrue(bez_kodu("::ffff:10.0.0.2", {}))
+        self.assertFalse(bez_kodu("8.8.8.8", {}))
+        self.assertFalse(bez_kodu("127.0.0.1", {"X-Forwarded-For": "8.8.8.8"}))
+        self.assertFalse(bez_kodu("127.0.0.1", {"Cf-Connecting-IP": "8.8.8.8"}))

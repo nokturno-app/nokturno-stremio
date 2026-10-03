@@ -140,7 +140,12 @@
   .souhrn-alert .zavrit { position: absolute; top: .3rem; right: .3rem; padding: .2rem .55rem; background: transparent;
                           border: 0; color: var(--tlumene); font-size: 1.3rem; line-height: 1; }
   .souhrn-alert .zavrit:hover { color: var(--text); }
-  body.vyber-profilu main > :not(.hlava):not(#profily):not(#aplikace), body.vyber-profilu .akce { display: none !important; }
+  body.vyber-profilu main > :not(.hlava):not(#profily):not(#aplikace):not(#spravce), body.vyber-profilu .akce { display: none !important; }
+  body.nastaveni-spravce main > :not(.hlava):not(#spravce), body.nastaveni-spravce .akce { display: none !important; }
+  #spravce .karta + .karta { margin-top: .8rem; }
+  #spravce button { margin-top: .5rem; }
+  #spravce [hidden] { display: none; }
+  #spravce .vysledek { margin-top: .8rem; }
   #profily .karta-hlava a { margin-left: .8rem; }
   .zalozit-profil { margin-top: .8rem; }
   .zalozit-profil button { margin-top: .5rem; }
@@ -289,6 +294,33 @@
     <li><a href="#instalace"><b>3</b>Pridať do aplikácie</a></li>
     <li><a href="#otazky"><b>?</b>Časté otázky</a></li>
   </ul>
+
+  <!-- správce aplikace (spravce.py): první nastavení hesla, přihlášení -->
+  <section id="spravce" hidden>
+    <div class="karta" id="spravce-nastavit" hidden>
+      <div class="karta-hlava"><h3>Heslo správcu</h3></div>
+      <p>Aplikácia zatiaľ nemá správcu. Nastav si heslo – s ním uvidíš nastavenie aplikácie a všetky profily. Kamaráti, ktorí si tu robia vlastný profil, heslo nepotrebujú a profily ostatných neuvidia. Doplnok v Stremiu heslo nechce.</p>
+      <label class="pole"><span>Heslo správcu</span>
+        <span class="heslo"><input type="password" id="spravce-heslo" autocomplete="new-password" spellcheck="false"></span></label>
+      <label class="pole"><span>Heslo znova</span>
+        <span class="heslo"><input type="password" id="spravce-heslo2" autocomplete="new-password" spellcheck="false"></span></label>
+      <label class="pole" id="spravce-kod-pole" hidden><span>Kód z výpisu aplikácie</span>
+        <input type="text" id="spravce-kod" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH">
+        <small>Aplikácia ho vypísala pri štarte do logu (okno aplikácie, journalctl, docker logs). Na rovnakom počítači alebo v domácej sieti ho stránka nechce.</small></label>
+      <button type="button" class="hlavni" id="spravce-nastavit-btn">Nastaviť heslo správcu</button>
+      <p class="vysledek chyba" id="spravce-chyba" hidden></p>
+    </div>
+    <div class="karta" id="spravce-prihlaseni" hidden>
+      <details>
+        <summary>Si správca aplikácie? Prihlás sa</summary>
+        <label class="pole"><span>Heslo správcu</span>
+          <span class="heslo"><input type="password" id="spravce-prihlas-heslo" autocomplete="current-password" spellcheck="false"></span></label>
+        <button type="button" class="male" id="spravce-prihlasit-btn">Prihlásiť</button>
+        <p class="vysledek chyba" id="spravce-prihlas-chyba" hidden></p>
+        <p class="popis">Zabudnuté heslo: v dátovom priečinku aplikácie zmaž zo súboru aplikace.json položku spravce a aplikáciu reštartuj. Potom sa dá nastaviť nové.</p>
+      </details>
+    </div>
+  </section>
 
   <!-- uložené profily: majitel aplikace, na sdílené instanci všichni (APLIKACE.profily), pole bez `name` – do nastavení nepatří -->
   <section id="profily" hidden>
@@ -749,10 +781,11 @@
         <span><strong>Profily</strong>
           <small>Nastavenie sa ukladá v aplikácii a adresa doplnku nesie len kľúč profilu – zmeny platia bez nového pridania. Vypnuté = ako predtým: adresa nesie celé nastavenie vrátane hesiel a po každej zmene sa doplnok pridáva znova. Už uložené profily fungujú ďalej.</small></span>
       </label>
-      <label class="pole"><span>Heslo k nastaveniu</span>
-        <span class="heslo"><input type="password" id="app-heslo" autocomplete="new-password" spellcheck="false" placeholder="bez hesla"></span></label>
-      <p class="popis">Chráni túto stránku a profily, keď je aplikácia dostupná z internetu. Doplnok v Stremiu heslo nechce. Prehliadač sa naň opýta pri otvorení nastavenia, meno môže byť ľubovoľné. Prázdne pole + Uložiť heslo zruší.</p>
+      <label class="pole"><span>Nové heslo správcu</span>
+        <span class="heslo"><input type="password" id="app-heslo" autocomplete="new-password" spellcheck="false" placeholder="bez zmeny"></span></label>
+      <p class="popis">Vyplň len vtedy, keď chceš heslo zmeniť. Ostatné prihlásenia správcu tým skončia.</p>
       <button type="button" class="male" id="app-ulozit-volby">Uložiť voľby aplikácie</button>
+      <button type="button" class="male" id="spravce-odhlasit">Odhlásiť správcu</button>
       <div class="stav" id="app-volby-stav"></div>
     </div>
     <div id="app-aktualizace" hidden>
@@ -915,6 +948,12 @@ const soucasne = __NASTAVENI__;
 // profil: nastavení je uložené v aplikaci pod klíčem a adresa doplňku nese jen ten klíč
 const STARY = (__APLIKACE__).stary === true;   // NOKTURNO_PROFILY=0: adresa nese celé nastavení, profily se nezakládají
 let profil = "__PROFIL__";            // prázdný = nastavení ještě není uložené v aplikaci
+// profily, které zná tenhle prohlížeč – kamarád bez hesla správce vidí v seznamu jen je
+const MOJE_PROFILY = "nokturno-profily";
+const mojeKlice = () => { try { const k = JSON.parse(localStorage.getItem(MOJE_PROFILY) || "[]"); return Array.isArray(k) ? k : []; } catch { return []; } };
+const zapamatuj = (klic, pryc = false) => {
+  try { const k = mojeKlice().filter((x) => x !== klic); if (!pryc) k.unshift(klic); localStorage.setItem(MOJE_PROFILY, JSON.stringify(k.slice(0, 50))); } catch {}
+};
 let ulozeno = profil ? "?" : null;    // kousek posledně uloženého nastavení (doplní se líně, viz zmeneno)
 form.elements["hide_lowq"].checked = true;   // výchozí zapnuto; stará adresa bez volby ji nesmí odškrtnout
 for (const [klic, hodnota] of Object.entries(soucasne)) {
@@ -1553,6 +1592,7 @@ async function ulozProfil(prevod = false) {
   if (!r.ok) throw new Error(r.status);
   const d = await r.json();
   profil = d.klic; ulozeno = kousek();
+  zapamatuj(profil);
   history.replaceState(null, "", ZAKLAD + "/c/" + profil + "/configure");
   prekresli();
   nactiProfily();
@@ -1637,6 +1677,35 @@ $("kopirovat").addEventListener("click", async () => {
 const APLIKACE = __APLIKACE__;
 const posliServeru = (cesta, telo) => fetch(ZAKLAD + cesta, {method: "POST", headers: {"X-Nokturno": "1"}, body: telo})
   .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+// --- správce aplikace (spravce.py) ---
+async function spravcePost(cesta, telo) {
+  const r = await fetch(ZAKLAD + cesta, { method: "POST", headers: { "X-Nokturno": "1" }, body: JSON.stringify(telo) });
+  if (!r.ok) throw r.status;
+}
+if (!APLIKACE.spravce_nastaven) {
+  // bez správce nejde nic jiného: první otevření stránky = nastavení hesla
+  document.body.classList.add("nastaveni-spravce");
+  $("spravce").hidden = false;
+  $("spravce-nastavit").hidden = false;
+  $("spravce-kod-pole").hidden = !APLIKACE.kod_potreba;
+  const ukaz = (text) => { $("spravce-chyba").textContent = text; $("spravce-chyba").hidden = false; };
+  $("spravce-nastavit-btn").addEventListener("click", async () => {
+    const heslo = $("spravce-heslo").value;
+    if (heslo.length < 6) return ukaz("Heslo musí mať aspoň 6 znakov.");
+    if (heslo !== $("spravce-heslo2").value) return ukaz("Heslá sa nezhodujú.");
+    try { await spravcePost("/spravce/nastavit", { heslo, kod: $("spravce-kod").value }); location.reload(); }
+    catch (e) { ukaz(e === 403 ? "Kód nesedí alebo je pokusov priveľa. Kód nájdeš vo výpise aplikácie z posledného štartu." : "Nepodarilo sa – skús to znova."); }
+  });
+} else if (!APLIKACE.sprava) {
+  $("spravce").hidden = false;
+  $("spravce-prihlaseni").hidden = false;
+  const prihlas = async () => {
+    try { await spravcePost("/spravce/prihlasit", { heslo: $("spravce-prihlas-heslo").value }); location.reload(); }
+    catch (e) { const c = $("spravce-prihlas-chyba"); c.textContent = e === 403 ? "Heslo nesedí." : "Nepodarilo sa – skús to znova."; c.hidden = false; }
+  };
+  $("spravce-prihlasit-btn").addEventListener("click", prihlas);
+  $("spravce-prihlas-heslo").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); prihlas(); } });
+}
 if (APLIKACE.sprava) {
   $("aplikace").hidden = false;
   $("bez-profilu").hidden = false;
@@ -1648,20 +1717,18 @@ if (APLIKACE.sprava) {
   });
   $("app-profily").checked = APLIKACE.rezim_profily !== false;
   const stavVoleb = (text, chyba = false) => { $("app-volby-stav").textContent = text; $("app-volby-stav").classList.toggle("chyba", chyba); };
-  stavVoleb(APLIKACE.ma_heslo ? "Heslo je nastavené. Nové heslo ho prepíše, prázdne pole ho zruší." : "Heslo nie je nastavené.");
   $("app-ulozit-volby").addEventListener("click", async () => {
     const volby = { profily: $("app-profily").checked }, heslo = $("app-heslo").value;
-    // heslo se mění jen vyplněním; prázdné pole ho zruší, jen když nějaké je a správce to potvrdí
-    if (heslo) volby.heslo = heslo;
-    else if (APLIKACE.ma_heslo && confirm("Naozaj zrušiť heslo k nastaveniu?")) volby.heslo = "";
+    if (heslo && heslo.length < 6) { stavVoleb("Heslo musí mať aspoň 6 znakov.", true); return; }
+    if (heslo) volby.spravce_heslo = heslo;
     try {
       const d = await posliServeru("/aplikace", JSON.stringify(volby));
       $("app-heslo").value = "";
-      if (d.rezim_profily !== APLIKACE.rezim_profily) { stavVoleb("Uložené, stránka sa obnoví…"); location.reload(); return; }
-      APLIKACE.ma_heslo = d.ma_heslo;
-      stavVoleb("Uložené. " + (d.ma_heslo ? "Heslo je nastavené. Nové heslo ho prepíše, prázdne pole ho zruší." : "Heslo nie je nastavené."));
-    } catch { stavVoleb("Uložiť sa nepodarilo.", true); }
+      if (d.rezim_profily !== APLIKACE.rezim_profily) { location.reload(); return; }
+      stavVoleb(heslo ? "Uložené, heslo správcu je zmenené." : "Uložené.");
+    } catch { stavVoleb("Nepodarilo sa – skús to znova.", true); }
   });
+  $("spravce-odhlasit").addEventListener("click", () => posliServeru("/spravce/odhlasit", "{}").finally(() => location.reload()));
 }
 if (APLIKACE.sprava && APLIKACE.aktualizace) {
   $("app-aktualizace").hidden = false;
@@ -1707,7 +1774,7 @@ if (APLIKACE.sprava && APLIKACE.soukroma) {
 // --- uložené profily (jen správa mimo proxy) ---
 function nactiProfily(akce = "/profily", telo = {}) {
   if (!APLIKACE.profily) return Promise.resolve();
-  return posliServeru(akce, JSON.stringify(telo)).then((d) => {
+  return posliServeru(akce, JSON.stringify({ ...telo, klice: mojeKlice() })).then((d) => {
     const ul = $("seznam-profilu"), seznam = d.profily || [];
     // výběr profilu (holé /configure s uloženými profily) = jen seznam; jinak jen název a cesta zpět
     const vyber = VYBER;
@@ -1728,6 +1795,7 @@ function nactiProfily(akce = "/profily", telo = {}) {
       smazat.type = "button"; smazat.className = "male"; smazat.textContent = "Zmazať";
       smazat.addEventListener("click", () => {
         if (!confirm("Zmazať profil? Doplnok s jeho adresou prestane fungovať.")) return;
+        zapamatuj(p.klic, true);
         nactiProfily("/profil/smazat", { klic: p.klic }).then(() => {
           if (p.klic !== profil) return;
           location.href = ZAKLAD + "/configure";
@@ -1759,6 +1827,7 @@ $("novy-jmeno").addEventListener("input", () => { $("zalozit-chyba").hidden = tr
 $("profily-vse").addEventListener("click", (e) => { e.preventDefault(); location.href = ZAKLAD + "/configure"; });
 const VYBER = APLIKACE.profily && !profil && !Object.keys(soucasne).length;
 if (VYBER) document.body.classList.add("vyber-profilu");   // hned, ať formulář neproblikne
+if (profil) zapamatuj(profil);
 nactiProfily();
 if (STARY) $("qr").hidden = true;
 

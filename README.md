@@ -100,6 +100,8 @@ použít kdokoli. V `nokturno.json`:
 - `NOKTURNO_PROFILY=0`: starý režim bez profilů – adresa doplňku nese celé nastavení včetně hesel.
   Už uložené profily se dál čtou, nové nejdou zakládat, ukládat, přejmenovat ani mazat.
 - `NOKTURNO_HESLO`: heslo k nastavení a profilům (HTTP Basic, jméno libovolné). Doplněk sám heslo nechce.
+- Obojí jde od 9.9.2 přepnout i na `/configure` v sekci Aplikace (jen správce, mimo veřejnou adresu).
+  Uloží se do `aplikace.json` v datové složce (heslo jen jako hash) a má přednost před prostředím.
 
 Jak nastavení povolit:
 

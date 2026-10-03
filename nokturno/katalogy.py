@@ -198,8 +198,10 @@ class Katalogy:
 
     @staticmethod
     def _koncert_nahled(a, popis=""):
-        return {"id": KPREFIX + a["id"][2:], "type": KONCERTY, "name": a["name"], "posterShape": "square",
-                "description": popis or f"Koncertů: {len(concertcat.group(a['files'], a['name']))}"}
+        out = {"id": KPREFIX + a["id"][2:], "type": KONCERTY, "name": a["name"], "posterShape": "square",
+               "description": popis or f"Koncertů: {len(concertcat.group(a['files'], a['name']))}"}
+        img = concertcat.image(a["files"])
+        return dict(out, poster=img) if img else out
 
     def _koncerty_polozky(self, options, klic, skip, zanr, jazyk="cs"):
         index = self.overovani.koncerty(options)
@@ -242,10 +244,14 @@ class Katalogy:
         if k is None:
             return None
         jmeno, koncerty, _ = k
-        videa = [{"id": f"{item_id}:{i}", "title": f"{g['title']} ({g['year']})" if g["year"] else g["title"],
-                  "released": f"{g['year'] or 1970}-01-01T00:00:00.000Z"} for i, g in enumerate(koncerty)]
-        return {"id": item_id, "type": KONCERTY, "name": jmeno, "posterShape": "square", "videos": videa,
-                "description": f"Koncertů: {len(koncerty)}"}
+        videa = [dict({"id": f"{item_id}:{i}", "title": f"{g['title']} ({g['year']})" if g["year"] else g["title"],
+                       "released": f"{g['year'] or 1970}-01-01T00:00:00.000Z"},
+                      **({"thumbnail": concertcat.image(g["files"])} if concertcat.image(g["files"]) else {}))
+                 for i, g in enumerate(koncerty)]
+        out = {"id": item_id, "type": KONCERTY, "name": jmeno, "posterShape": "square", "videos": videa,
+               "description": f"Koncertů: {len(koncerty)}"}
+        img = next((v["thumbnail"] for v in videa if v.get("thumbnail")), "")
+        return dict(out, poster=img, background=img) if img else out
 
     def koncert_soubory(self, options, item_id):
         """Soubory jednoho koncertu (id se 3 částmi) jako popisy streamů pro `mapping.streams_response`."""

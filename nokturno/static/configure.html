@@ -700,16 +700,26 @@
       <div class="karta" id="karta-vk">
         <div class="karta-hlava">
           <h3>Vlastní katalogy</h3>
-          <span class="stitek">Volitelné · až 5 katalogů</span>
+          <span class="stitek">Volitelné · až 20 katalogů</span>
         </div>
-        <p>Poskládej si vlastní seznam podle žánru, původního jazyka a let – třeba české pohádky nebo korejské thrillery. Druh Koncerty skládá seznam interpretů podle hudebních žánrů. Katalog se objeví na domovské stránce Stremia, tituly dodá server Nokturna. Po změně katalogu přidej doplněk znovu.</p>
+        <p>Poskládej si vlastní seznam podle žánru, země původu, let a dabingu – třeba české pohádky nebo korejské thrillery. Začít jde ze šablony. Katalog se objeví na domovské stránce Stremia, tituly dodá server Nokturna. Po změně katalogu přidej doplněk znovu.</p>
         <div id="vk"></div>
         <button type="button" class="male" id="vk-pridat">Přidat katalog</button>
         <input type="hidden" name="vk">
+      </div>
+      <!-- Koncerty -->
+      <div class="karta" id="karta-koncerty">
+        <div class="karta-hlava">
+          <h3>Koncerty</h3>
+          <span class="stitek">Volitelné</span>
+        </div>
+        <p>Záznamy koncertů oblíbených interpretů vybraných žánrů. Ve Stremiu přibude druh Koncerty se seznamy Nově přidané a Podle abecedy (s výběrem žánru). Hledá se na pozadí, dokud aplikace běží, takže se seznam zaplňuje postupně. Po změně přidej doplněk znovu.</p>
+        <div class="vk-zanry" id="koncerty-zanry"></div>
+        <input type="hidden" name="koncerty_zanry">
         <div id="lastfm-blok" hidden>
           <label class="pole"><span>Last.fm API klíč</span>
             <span class="heslo"><input type="password" name="lastfm_key" maxlength="64" autocomplete="off" spellcheck="false"></span></label>
-          <p class="drobne">Klíč zdarma na last.fm/api. Potřeba jen pro katalogy koncertů.</p>
+          <p class="drobne">Klíč zdarma na last.fm/api. Bez něj se koncerty nehledají.</p>
         </div>
       </div>
     </section>
@@ -1021,7 +1031,7 @@ if (Object.keys(soucasne).length === 0) {
 
 // --- katalogy: zaškrtávátka bez jména, do adresy jde jen skryté pole „katalogy“ ---
 const KATALOGY = __KATALOGY__;
-const VYCHOZI_VK = __VYCHOZI_VK__;   // předvolby jen u nového profilu (config.vychozi_vlastni_katalogy), jinak []
+const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES), jen předvyplní editor
 (function () {
   const obal = $("katalogy"), skryte = form.elements["katalogy"];
   if (!KATALOGY.length) { $("karta-katalogy").hidden = true; return; }
@@ -1049,120 +1059,142 @@ const VYCHOZI_VK = __VYCHOZI_VK__;   // předvolby jen u nového profilu (config
 // --- vlastní katalogy: editor bez jmen polí, do adresy jde jen skryté pole „vk“ (JSON) ---
 (function () {
   const T = {"odebrat": "Odebrat", "nazev": "Název", "typ": "Druh", "filmy": "Filmy", "serialy": "Seriály", "zanry": "Žánry (nic = všechny)", "jeden": "Stačí jeden z vybraných žánrů", "jazyk": "Původní jazyk", "od": "Od roku", "do_": "Do roku", "razeni": "Řadit podle", "vlastni": "Vlastní katalog", "roky": "Roky", "rok_zadny": "Bez omezení", "rok_od_do": "Od–do", "rok_posl": "Posledních X let", "rok_kolik": "Kolik posledních let", "ov": "Ověřovat dostupnost streamů", "ov_napoveda": "Katalog ukáže jen tituly se streamem podle těchto požadavků. Ověřuje se na pozadí, dokud aplikace běží.", "kvalita": "Minimální kvalita", "kvality": [["0", "Libovolná"], ["3", "Full HD"], ["3.5", "2K"], ["4", "4K"]], "zvuk": "Jazyk zvuku", "titulky": "Titulky", "stopy": [["", "Libovolné"], ["CZ", "Čeština"], ["SK", "Slovenština"], ["CZ|SK", "Čeština nebo slovenština"], ["EN", "Angličtina"], ["HU", "Maďarština"]], "kanaly": "5.1 a víc", "zobraz": "Zobrazit seřazené podle", "zobraz_v": [["found", "Nově nalezené"], ["pool", "Stejně jako výběr"], ["released", "Nejnovější vydání"]], "jazyky": [["", "Jakýkoli"], ["cs", "Čeština"], ["sk", "Slovenština"], ["cs|sk", "Čeština nebo slovenština"], ["en", "Angličtina"], ["de", "Němčina"], ["fr", "Francouzština"], ["es", "Španělština"], ["it", "Italština"], ["pl", "Polština"], ["hu", "Maďarština"], ["ko", "Korejština"], ["ja", "Japonština"]], "pohadky": "Pohádky", "razeni_v": [["popularity.desc", "Oblíbenosti"], ["vote_average.desc", "Hodnocení"], ["primary_release_date.desc", "Data vydání"]], "zanry_v": {"movie": [[28, "Akční"], [12, "Dobrodružný"], [16, "Animovaný"], [35, "Komedie"], [80, "Krimi"], [99, "Dokumentární"], [18, "Drama"], [10751, "Rodinný"], [14, "Fantasy"], [36, "Historický"], [27, "Horor"], [10402, "Hudební"], [9648, "Mysteriózní"], [10749, "Romantický"], [878, "Sci-fi"], [53, "Thriller"], [10752, "Válečný"], [37, "Western"]], "series": [[10759, "Akční a dobrodružný"], [16, "Animovaný"], [35, "Komedie"], [80, "Krimi"], [99, "Dokumentární"], [18, "Drama"], [10751, "Rodinný"], [10762, "Pro děti"], [9648, "Mysteriózní"], [10764, "Reality"], [10765, "Sci-fi a fantasy"], [10768, "Válečný a politický"], [37, "Western"]]}, "koncerty": "Koncerty", "tagy": [["czech", "Česká"], ["slovak", "Slovenská"], ["czech rock", "Český rock"], ["classic rock", "Classic rock"], ["hard rock", "Hard rock"], ["metal", "Metal"], ["rock", "Rock"], ["pop", "Pop"], ["punk", "Punk"], ["hip-hop", "Hip-hop"], ["jazz", "Jazz"], ["electronic", "Elektronická"], ["folk", "Folk"], ["classical", "Klasická"], ["reggae", "Reggae"], ["world", "World"]], "zobraz_k": [["pool", "Stejně jako výběr"], ["found", "Nově nalezené"], ["name", "Podle abecedy"]], "hudba": "Hudební žánry", "hudba_n": "Katalog koncertů hledá záznamy podle oblíbených interpretů vybraných žánrů. Hledá se na pozadí, dokud aplikace běží, takže se zaplňuje postupně."};
+  Object.assign(T, {"zeme": "Země původu (nejvýš 5, nic = všechny)", "zeme_v": [["CZ", "Česko"], ["SK", "Slovensko"], ["US", "USA"], ["GB", "Velká Británie"], ["FR", "Francie"], ["DE", "Německo"], ["IT", "Itálie"], ["ES", "Španělsko"], ["PL", "Polsko"], ["HU", "Maďarsko"], ["KR", "Jižní Korea"], ["JP", "Japonsko"], ["DK", "Dánsko"], ["SE", "Švédsko"], ["NO", "Norsko"]], "sablona": "Ze šablony", "sablona_zadna": "Prázdný katalog", "rezim_tmdb": "Katalog z TMDB", "rezim_tmdb_n": "Ukáže hned všechny tituly podle filtrů.", "rezim_ov": "Jen tituly se streamem", "rezim_ov_n": "Na pozadí se u každého titulu hledá stream podle tvých požadavků (dabing, titulky, kvalita, 5.1). Katalog se plní postupně, dokud aplikace běží, a ukáže jen to, co jde přehrát.", "dub": "{} dabing", "sub": "titulky {}", "posl": "posledních {} let", "rozsah": "{}–{}", "od_": "od {}", "do__": "do {}", "zvuk": "Jazyk dabingu", "q_n": {"3": "Full HD", "3.5": "2K", "4": "4K"}});
   const MAX = 20, obal = $("vk"), skryte = form.elements["vk"], pridat = $("vk-pridat");
+  const L2Z = {"cs": ["CZ"], "sk": ["SK"], "cs|sk": ["CZ", "SK"], "sk|cs": ["CZ", "SK"], "de": ["DE"], "fr": ["FR"], "es": ["ES"],
+               "it": ["IT"], "pl": ["PL"], "hu": ["HU"], "ko": ["KR"], "ja": ["JP"], "en": ["US", "GB"]};   // = mycat.migrate_lang
+  const SPOL = {sort: "s", years: "posl", verify: "ov", q: "q", audio: "a", subs: "ti", surround: "ch", show: "z", join: "j",
+                genres: "g", keywords: "k", countries: "zeme"};   // pole šablony (mycat) → pole `vk`
   let seznam = [], hotovo = false;   // prekresli() před koncem skriptu sahá na ještě nedefinované `adresa`
-  try { seznam = JSON.parse(skryte.value || JSON.stringify(VYCHOZI_VK)); } catch (e) { seznam = []; }
+  try { seznam = JSON.parse(skryte.value || "[]"); } catch (e) { seznam = []; }
   if (!Array.isArray(seznam)) seznam = [];
+  seznam = seznam.filter((c) => c && c.t !== "koncert");
   const el = (tag, vlastnosti = {}, ...deti) => { const e = Object.assign(document.createElement(tag), vlastnosti); e.append(...deti); return e; };
   const vyber = (moznosti, hodnota) => { const s = el("select"); for (const [v, n] of moznosti) s.append(el("option", {value: v, textContent: n})); s.value = hodnota || moznosti[0][0]; return s; };
   const pole = (popisek, vstup) => el("label", {className: "pole"}, el("span", {textContent: popisek}), vstup);
+  // stejná pravidla jako mycat.auto_name: žánry (max 3) · země (max 2) · dabing · titulky · kvalita · 5.1 · roky
   function nazevAuto(c) {
-    if (c.t === "koncert") return (c.g || []).map((g) => (T.tagy.find(([v]) => v === g) || [])[1]).filter(Boolean).join(", ") || T.koncerty;
-    const zanry = Object.fromEntries(T.zanry_v[c.t]);
-    const casti = (c.k || []).map(() => T.pohadky).concat((c.g || []).map((g) => zanry[g]).filter(Boolean));
-    const jazyk = (T.jazyky.find(([v]) => v && v === c.l) || [])[1];
-    return (casti.join(", ") || T.vlastni) + (jazyk ? " (" + jazyk + ")" : "");
+    const zanry = Object.fromEntries(T.zanry_v[c.t] || []), zeme = Object.fromEntries(T.zeme_v), casti = [];
+    const jmena = (c.g || []).map((g) => zanry[g]).concat((c.k || []).map(() => T.pohadky)).filter(Boolean).slice(0, 3);
+    if (jmena.length) casti.push(jmena.join(", "));
+    const z = (c.zeme || []).slice(0, 2).map((k) => zeme[k] || k);
+    if (z.length) casti.push(z.join(", "));
+    if (c.ov) {
+      if (c.a) casti.push(T.dub.replace("{}", c.a.replace("|", "/")));
+      if (c.ti) casti.push(T.sub.replace("{}", c.ti.replace("|", "/")));
+      if (T.q_n[String(c.q)]) casti.push(T.q_n[String(c.q)]);
+      if (c.ch) casti.push("5.1");
+    }
+    if (c.posl) casti.push(T.posl.replace("{}", c.posl));
+    else if (c.od && c.do) casti.push(T.rozsah.replace("{}", c.od).replace("{}", c.do));
+    else if (c.od) casti.push(T.od_.replace("{}", c.od));
+    else if (c.do) casti.push(T.do__.replace("{}", c.do));
+    return casti.join(" · ") || T.vlastni;
+  }
+  function zeSablony(t) {
+    const c = {t: t.kind, n: t.name};
+    for (const [z, na] of Object.entries(SPOL)) {
+      const v = t.fields[z];
+      if (v === undefined || v === false || v === "" || v === 0) continue;
+      c[na] = v === true ? 1 : z === "q" ? String(v) : v;
+    }
+    return c;
   }
   function uloz() {
     const cista = seznam.map((c) => ({...c, n: (c.n || "").trim() || nazevAuto(c)}));
     skryte.value = cista.length ? JSON.stringify(cista) : "";
     pridat.hidden = seznam.length >= MAX;
-    $("lastfm-blok").hidden = !seznam.some((c) => c.t === "koncert");
     if (hotovo) prekresli();
   }
   function vykresli() {
     obal.replaceChildren();
     seznam.forEach((c, i) => {
-      c.t = ["series", "koncert"].includes(c.t) ? c.t : "movie";
-      const nazev = el("input", {type: "text", maxLength: 40, value: c.n || "", placeholder: nazevAuto(c)});
-      nazev.addEventListener("input", () => { c.n = nazev.value; uloz(); });
-      const typ = vyber([["movie", T.filmy], ["series", T.serialy], ["koncert", T.koncerty]], c.t);
-      typ.addEventListener("change", () => { c.t = typ.value; c.g = []; c.k = []; delete c.ov; vykresli(); });
-      if (c.t === "koncert") {   // jen název, žánry Last.fm a řazení; ověřuje se vždy
-        const kz = el("div", {className: "vk-zanry"});
-        for (const [id, n] of T.tagy) {
-          const box = el("input", {type: "checkbox", checked: (c.g || []).includes(id)});
+      c.t = c.t === "series" ? "series" : "movie";
+      if (c.l && !(c.zeme || []).length) { c.zeme = L2Z[c.l] || []; }   // starý „původní jazyk“ → země původu
+      delete c.l;
+      let rucne = !!c.n && c.n !== nazevAuto(c);   // přepsaný název se už sám nemění
+      const nazev = el("input", {type: "text", maxLength: 40, value: c.n || nazevAuto(c)});
+      const zmena = () => { if (!rucne) { c.n = nazevAuto(c); nazev.value = c.n; } uloz(); };
+      nazev.addEventListener("input", () => { c.n = nazev.value; rucne = nazev.value.trim() !== ""; uloz(); });
+      const typ = vyber([["movie", T.filmy], ["series", T.serialy]], c.t);
+      typ.addEventListener("change", () => { c.t = typ.value; c.g = []; vykresli(); });
+      const sablona = vyber([["", T.sablona_zadna]].concat(SABLONY.filter((s) => s.kind === c.t).map((s) => [s.key, s.name])), "");
+      sablona.addEventListener("change", () => {
+        const s = SABLONY.find((x) => x.key === sablona.value);
+        if (s) { seznam[i] = zeSablony(s); vykresli(); }
+      });
+      const zaskrtavatka = (volby, klic, max) => {
+        const obalZ = el("div", {className: "vk-zanry"});
+        for (const [druh, id, n] of volby) {
+          const box = el("input", {type: "checkbox", checked: (c[druh] || []).includes(id)});
           box.addEventListener("change", () => {
-            c.g = (c.g || []).filter((x) => x !== id).concat(box.checked ? [id] : []);
-            nazev.placeholder = nazevAuto(c); uloz();
+            if (box.checked && max && (c[druh] || []).length >= max) { box.checked = false; return; }
+            c[druh] = (c[druh] || []).filter((x) => x !== id).concat(box.checked ? [id] : []);
+            if (klic === "g") jeden.hidden = (c.g || []).length < 2;
+            zmena();
           });
-          kz.append(el("label", {}, box, n));
+          obalZ.append(el("label", {}, box, n));
         }
-        const kzobraz = vyber(T.zobraz_k, c.z || "pool");
-        kzobraz.addEventListener("change", () => { c.z = kzobraz.value; uloz(); });
-        c.z = kzobraz.value;
-        const kodebrat = el("button", {type: "button", className: "male", textContent: T.odebrat});
-        kodebrat.addEventListener("click", () => { seznam.splice(i, 1); vykresli(); });
-        obal.append(el("div", {className: "vk-kat"},
-          el("div", {className: "dvojice"}, pole(T.nazev, nazev), pole(T.typ, typ)),
-          el("span", {className: "drobne", textContent: T.hudba, style: "display:block;margin:0 0 .35rem"}), kz,
-          el("span", {className: "drobne", textContent: T.hudba_n, style: "display:block;margin:0 0 .6rem"}),
-          pole(T.zobraz, kzobraz), kodebrat));
-        return;
-      }
-      const zanry = el("div", {className: "vk-zanry"});
-      const volby = T.zanry_v[c.t].map(([id, n]) => ["g", id, n]).concat([["k", "fairy", T.pohadky]]);
-      for (const [druh, id, n] of volby) {
-        const box = el("input", {type: "checkbox", checked: (c[druh] || []).includes(id)});
-        box.addEventListener("change", () => {
-          c[druh] = (c[druh] || []).filter((x) => x !== id).concat(box.checked ? [id] : []);
-          nazev.placeholder = nazevAuto(c); jeden.hidden = (c.g || []).length < 2; uloz();
-        });
-        zanry.append(el("label", {}, box, n));
-      }
+        return obalZ;
+      };
+      const zanry = zaskrtavatka(T.zanry_v[c.t].map(([id, n]) => ["g", id, n]).concat([["k", "fairy", T.pohadky]]), "g");
+      const zeme = zaskrtavatka(T.zeme_v.map(([id, n]) => ["zeme", id, n]), "zeme", 5);
       const jedenBox = el("input", {type: "checkbox", checked: c.j === "or"});
       jedenBox.addEventListener("change", () => { c.j = jedenBox.checked ? "or" : "and"; uloz(); });
       const jeden = el("label", {className: "prepinac", hidden: (c.g || []).length < 2}, jedenBox, el("span", {}, el("strong", {textContent: T.jeden})));
-      const jazyk = vyber(T.jazyky, c.l || "");
-      jazyk.addEventListener("change", () => { c.l = jazyk.value; nazev.placeholder = nazevAuto(c); uloz(); });
       const rok = (klic) => {
         const v = el("input", {type: "number", min: 1900, max: 2099, step: 1, inputMode: "numeric", value: c[klic] || ""});
-        v.addEventListener("input", () => { c[klic] = /^(19|20)\d\d$/.test(v.value) ? v.value : ""; uloz(); });
+        v.addEventListener("input", () => { c[klic] = /^(19|20)\d\d$/.test(v.value) ? v.value : ""; zmena(); });
         return v;
       };
       const razeni = vyber(T.razeni_v, c.s);
       razeni.addEventListener("change", () => { c.s = razeni.value; uloz(); });
       c.s = razeni.value;
-      const rezim = vyber([["0", T.rok_zadny], ["1", T.rok_od_do], ["2", T.rok_posl]], c.posl ? "2" : (c.od || c.do) ? "1" : "0");
+      const rezimRoku = vyber([["0", T.rok_zadny], ["1", T.rok_od_do], ["2", T.rok_posl]], c.posl ? "2" : (c.od || c.do) ? "1" : "0");
       const odDo = el("div", {className: "dvojice"}, pole(T.od, rok("od")), pole(T.do_, rok("do")));
       const poslVstup = el("input", {type: "number", min: 1, max: 50, step: 1, inputMode: "numeric", value: c.posl || ""});
-      poslVstup.addEventListener("input", () => { const n = parseInt(poslVstup.value, 10); c.posl = n >= 1 && n <= 50 ? n : ""; uloz(); });
+      poslVstup.addEventListener("input", () => { const n = parseInt(poslVstup.value, 10); c.posl = n >= 1 && n <= 50 ? n : ""; zmena(); });
       const poslPole = pole(T.rok_kolik, poslVstup);
-      const ukazRoky = () => { odDo.hidden = rezim.value !== "1"; poslPole.hidden = rezim.value !== "2"; };
-      rezim.addEventListener("change", () => {
-        if (rezim.value !== "1") { c.od = ""; c.do = ""; }
-        if (rezim.value === "2") { c.posl = c.posl || 5; poslVstup.value = c.posl; } else c.posl = "";
-        ukazRoky(); uloz();
+      const ukazRoky = () => { odDo.hidden = rezimRoku.value !== "1"; poslPole.hidden = rezimRoku.value !== "2"; };
+      rezimRoku.addEventListener("change", () => {
+        if (rezimRoku.value !== "1") { c.od = ""; c.do = ""; }
+        if (rezimRoku.value === "2") { c.posl = c.posl || 5; poslVstup.value = c.posl; } else c.posl = "";
+        ukazRoky(); zmena();
       });
       ukazRoky();
-      const ovBox = el("input", {type: "checkbox", checked: !!c.ov});
       const volba = (klic, moznosti, vychozi) => {
         const v = vyber(moznosti, String(c[klic] || vychozi));
-        v.addEventListener("change", () => { c[klic] = v.value === vychozi ? "" : v.value; uloz(); });
+        v.addEventListener("change", () => { c[klic] = v.value === vychozi ? "" : v.value; zmena(); });
         return v;
       };
       const chBox = el("input", {type: "checkbox", checked: !!c.ch});
-      chBox.addEventListener("change", () => { c.ch = chBox.checked ? 1 : ""; uloz(); });
+      chBox.addEventListener("change", () => { c.ch = chBox.checked ? 1 : ""; zmena(); });
       const zobraz = vyber(T.zobraz_v, c.z || "found");
       zobraz.addEventListener("change", () => { c.z = zobraz.value; uloz(); });
       const ovBlok = el("div", {hidden: !c.ov},
-        el("div", {className: "dvojice"}, pole(T.kvalita, volba("q", T.kvality, "0")), pole(T.zobraz, zobraz)),
         el("div", {className: "dvojice"}, pole(T.zvuk, volba("a", T.stopy, "")), pole(T.titulky, volba("ti", T.stopy, ""))),
+        el("div", {className: "dvojice"}, pole(T.kvalita, volba("q", T.kvality, "0")), pole(T.zobraz, zobraz)),
         el("label", {className: "prepinac"}, chBox, el("span", {}, el("strong", {textContent: T.kanaly}))));
-      ovBox.addEventListener("change", () => {
-        if (ovBox.checked) { c.ov = 1; c.z = c.z || "found"; } else delete c.ov;
-        ovBlok.hidden = !ovBox.checked; uloz();
-      });
-      const ov = el("div", {}, el("label", {className: "prepinac"}, ovBox, el("span", {}, el("strong", {textContent: T.ov}),
-        el("span", {className: "drobne", textContent: T.ov_napoveda}))), ovBlok);
+      const rezim = (hodnota, nadpis, napoveda) => {
+        const r = el("input", {type: "radio", name: "vk-rezim-" + i, checked: !!c.ov === hodnota});
+        r.addEventListener("change", () => {
+          if (hodnota) { c.ov = 1; c.z = c.z || "found"; } else delete c.ov;
+          ovBlok.hidden = !hodnota; zmena();
+        });
+        return el("label", {className: "prepinac"}, r, el("span", {}, el("strong", {textContent: nadpis}),
+          el("span", {className: "drobne", textContent: napoveda})));
+      };
       const odebrat = el("button", {type: "button", className: "male", textContent: T.odebrat});
       odebrat.addEventListener("click", () => { seznam.splice(i, 1); vykresli(); });
+      const popisek = (t) => el("span", {className: "drobne", textContent: t, style: "display:block;margin:0 0 .35rem"});
       obal.append(el("div", {className: "vk-kat"},
-        el("div", {className: "dvojice"}, pole(T.nazev, nazev), pole(T.typ, typ)),
-        el("span", {className: "drobne", textContent: T.zanry, style: "display:block;margin:0 0 .35rem"}), zanry, jeden,
-        el("div", {className: "dvojice"}, pole(T.jazyk, jazyk), pole(T.razeni, razeni)),
-        pole(T.roky, rezim), odDo, poslPole,
-        ov,
+        el("div", {className: "dvojice"}, pole(T.typ, typ), pole(T.sablona, sablona)),
+        rezim(false, T.rezim_tmdb, T.rezim_tmdb_n), rezim(true, T.rezim_ov, T.rezim_ov_n),
+        popisek(T.zanry), zanry, jeden,
+        popisek(T.zeme), zeme,
+        el("div", {className: "dvojice"}, pole(T.roky, rezimRoku), pole(T.razeni, razeni)), odDo, poslPole,
+        ovBlok,
+        pole(T.nazev, nazev),
         odebrat));
     });
     uloz();
@@ -1172,11 +1204,31 @@ const VYCHOZI_VK = __VYCHOZI_VK__;   // předvolby jen u nového profilu (config
   hotovo = true;
 })();
 
+// --- koncerty: zaškrtávátka žánrů, do adresy jde jen skryté pole „koncerty_zanry“ (čárkami) ---
+(function () {
+  const TAGY = [["czech", "Česká scéna"], ["slovak", "Slovenská scéna"], ["czech rock", "Český rock"], ["classic rock", "Classic rock"], ["hard rock", "Hard rock"], ["metal", "Metal"], ["rock", "Rock"], ["pop", "Pop"], ["punk", "Punk"], ["hip-hop", "Hip-hop"], ["jazz", "Jazz"], ["electronic", "Elektronika"], ["folk", "Folk"], ["classical", "Klasika"], ["reggae", "Reggae"], ["world", "World"]];
+  const obal = $("koncerty-zanry"), skryte = form.elements["koncerty_zanry"];
+  const zvolene = new Set(String(skryte.value || "").split(",").filter(Boolean));
+  const ukaz = () => { $("lastfm-blok").hidden = !skryte.value; };
+  for (const [id, n] of TAGY) {
+    const box = Object.assign(document.createElement("input"), {type: "checkbox", checked: zvolene.has(id)});
+    box.addEventListener("change", () => {
+      if (box.checked) zvolene.add(id); else zvolene.delete(id);
+      skryte.value = TAGY.map(([v]) => v).filter((v) => zvolene.has(v)).join(",");
+      ukaz(); prekresli();
+    });
+    const label = document.createElement("label");
+    label.append(box, n);
+    obal.append(label);
+  }
+  ukaz();
+})();
+
 function nastaveni() {
   const out = {};
   for (const pole of form.elements) {
     if (!pole.name) continue;
-    if (pole.name === "lastfm_key" && $("lastfm-blok").hidden) continue;   // klíč jen s katalogem koncertů
+    if (pole.name === "lastfm_key" && $("lastfm-blok").hidden) continue;   // klíč jen se zapnutými koncerty
     // checkbox jde do adresy vždy — odškrtnutý dřív chyběl a server dosadil výchozí „zapnuto“,
     // takže HellSpy šel zapnout, ale ne vypnout (2026-09-14)
     if (pole.type === "checkbox") out[pole.name] = pole.checked;

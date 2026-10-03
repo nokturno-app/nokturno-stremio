@@ -60,6 +60,7 @@ from .core.lib.fastshare_api import FastshareApi
 from .core.lib.prehrajto_api import PrehrajtoApi
 from .core.lib.storage_api import SLOTS, StorageApi
 from .core.lib.cztor_api import CztorError
+from .core.lib import mycat
 from . import config, cztor, mapping, profily, sit, soukroma
 from .enginy import PrilisMnohoNovych
 from .katalogy import KONCERTY
@@ -697,14 +698,13 @@ class Router:
         except OSError:
             return chyba(500, "Formulář nastavení chybí.")
         soucasne = self._nastaveni(kousek) if kousek else None
-        novy = soucasne is None   # nový profil: předvyplní se předvolby vlastních katalogů, stávající zůstává beze změny
         if soucasne is None and self.predvyplnit and not verejny:
             soucasne = self.enginy.vychozi_options
         # hodnoty z adresy jsou od kohokoli — do <script> jen escapované (viz json_do_scriptu)
         html = html.replace("__NASTAVENI__", mapping.json_do_scriptu(soucasne or {}))
         nabidka = self.katalogy.formular(jazyk) if self.katalogy else []
         html = html.replace("__KATALOGY__", mapping.json_do_scriptu(nabidka))
-        html = html.replace("__VYCHOZI_VK__", mapping.json_do_scriptu(config.vychozi_vlastni_katalogy(jazyk) if novy else []))
+        html = html.replace("__SABLONY__", mapping.json_do_scriptu(mycat.TEMPLATES))
         # adresa doplňku: v síti HTTPS přes local-ip.co (Stremio jinak http z LAN nevezme)
         doplnek = self._zaklad_doplnku(zaklad)
         html = html.replace("__ZAKLAD_DOPLNKU__", html_lib.escape(doplnek, quote=True))
@@ -981,7 +981,7 @@ class Router:
         return Odpoved(data=mapping.streams_response(popisy, self._odkaz(zaklad, kousek),
                                                       primy=_primy(engine), jazyk=jazyk))
 
-    def katalog(self, casti, options=None):
+    def katalog(self, casti, options=None, jazyk="cs"):
         """`/catalog/<typ>/<id>.json` nebo `/catalog/<typ>/<id>/skip=<n>.json` → `{"metas": [...]}`."""
         if self.katalogy is None or len(casti) not in (3, 4) or not casti[-1].endswith(".json"):
             return chyba(404, "Takový katalog tu není.")
@@ -990,14 +990,16 @@ class Router:
             katalog_id, extra = casti[2][:-len(".json")], ""
         else:
             katalog_id, extra = casti[2], casti[3][:-len(".json")]
+        dotaz = urllib.parse.parse_qs(extra)
         try:
-            skip = max(0, int((urllib.parse.parse_qs(extra).get("skip") or ["0"])[0]))
+            skip = max(0, int((dotaz.get("skip") or ["0"])[0]))
         except ValueError:
             skip = 0
         if skip > MAX_SKIP:
             # každá hodnota skip je vlastní cache klíč a dotaz na zdroj; hlouběji Stremio nikdo neroluje
             return Odpoved(data={"metas": []})
-        metas = self.katalogy.polozky(typ, katalog_id, skip, options)
+        metas = self.katalogy.polozky(typ, katalog_id, skip, options, zanr=(dotaz.get("genre") or [""])[0][:40],
+                                      jazyk=jazyk)
         if metas is None:
             return chyba(404, "Takový katalog tu není.")
         return Odpoved(data={"metas": metas})
@@ -1155,7 +1157,7 @@ class Router:
                 return odp
             if casti[0] == "meta":
                 return self.koncert_meta(casti, options)
-            return self.katalog(casti, options)
+            return self.katalog(casti, options, jazyk)
 
         if stara and casti and casti[0] in ("stream", "play"):
             # od 6.4.9 bez skutečných streamů: sdílené nastavení bez účtů a bez identity musí

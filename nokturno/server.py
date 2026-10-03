@@ -570,7 +570,7 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
                                            adresy_soubor=os.path.join(data_dir, "zakazane_adresy.txt")))
     server.pady = Pady.z_prostredi(data_dir, VERZE)
     server.router.pady = server.pady
-    if dash is not None and server.router.profily is not None:   # ověřené vlastní katalogy (overovani.py)
+    if server.router.profily is not None:   # ověřené vlastní katalogy a koncerty (overovani.py)
         server.overovani = katalogy.overovani = Overovani(data_dir, enginy, dash, server.router.profily)
         server.overovani.start()
     if os.environ.get("NOKTURNO_SOUKROMA", "").strip().lower() in ("1", "true", "ano", "yes"):

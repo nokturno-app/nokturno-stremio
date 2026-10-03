@@ -112,8 +112,15 @@ TMDB_DASH = {"popular": {"sort_by": "popularity.desc"},
 DASH = "dash."   # klíč katalogu z dashboardu: `dash.<slug>`
 VK = "vk."       # vlastní katalog: `vk.<pořadí>`
 STRANKA_VK = 100
-KONCERTY = "Koncerty"   # vlastní typ Stremia pro koncertní katalogy (`t == "koncert"`)
-KPREFIX = "nktk:"       # id: `nktk:<katalog>:<interpret>` (meta), `…:<koncert>` (stream)
+KONCERTY = "Koncerty"   # vlastní typ Stremia pro koncerty (volba profilu `koncerty_zanry`)
+KPREFIX = "nktk:"       # id: `nktk:<interpret>` (meta), `nktk:<interpret>:<koncert>` (stream)
+K_NOVE, K_ABECEDA = "koncerty.nove", "koncerty.abeceda"
+ZANRY_KONCERTU = {"czech": "Česká scéna", "slovak": "Slovenská scéna", "czech rock": "Český rock",
+                  "classic rock": "Classic rock", "hard rock": "Hard rock", "metal": "Metal", "rock": "Rock",
+                  "pop": "Pop", "punk": "Punk", "hip-hop": "Hip-hop", "jazz": "Jazz", "electronic": "Elektronika",
+                  "folk": "Folk", "classical": "Klasika", "reggae": "Reggae", "world": "World"}
+ZANRY_KONCERTU_SK = {"czech": "Česká scéna", "slovak": "Slovenská scéna", "czech rock": "Český rock",
+                     "electronic": "Elektronika", "classical": "Klasika"}
 ZDROJE_KONCERTU = {"ws": "WebShare", "hs": "HellSpy", "fs": "FastShare"}
 STRANKA_DISCOVER = 20
 DISCOVER_STRAN = 10   # víc stránek dashboard nevydá (`DISCOVER_MAX_PAGE`)
@@ -168,31 +175,65 @@ class Katalogy:
             return []
 
     def vlastni(self, options):
-        vk = config.vlastni_katalogy((options or {}).get(config.VK_KLIC))
-        return vk if self.dash is not None else [c for c in vk if c["t"] == "koncert"]   # koncerty dashboard nepotřebují
+        return config.vlastni_katalogy((options or {}).get(config.VK_KLIC)) if self.dash is not None else []
 
     def ma_koncerty(self, options):
-        return self.overovani is not None and any(c["t"] == "koncert" for c in self.vlastni(options))
+        return self.overovani is not None and self.overovani.klic_koncertu(options) is not None
 
     @staticmethod
-    def _koncert_nahled(n, r):
-        mid = r["id"][2:]   # bez „a:“
-        return {"id": f"{KPREFIX}{n}:{mid}", "type": KONCERTY, "name": r["name"], "posterShape": "square",
-                "description": f"Koncertů: {len(concertcat.group(r['files'], r['name']))}"}
+    def _zanr_nazev(tag, jazyk="cs"):
+        return (ZANRY_KONCERTU_SK.get(tag) if jazyk == "sk" else None) or ZANRY_KONCERTU.get(tag, tag)
+
+    def _koncerty_manifest(self, options, jazyk):
+        if not self.ma_koncerty(options):
+            return []
+        zanry = [self._zanr_nazev(t, jazyk) for t in config.koncerty_zanry(options.get(config.KONCERTY_KLIC))]
+        nove = "Nové pridané" if jazyk == "sk" else "Nově přidané"
+        abeceda = "Podľa abecedy" if jazyk == "sk" else "Podle abecedy"
+        return [{"type": KONCERTY, "id": PREFIX + K_NOVE, "name": nove},
+                {"type": KONCERTY, "id": PREFIX + K_ABECEDA, "name": abeceda,
+                 "extra": [{"name": "genre", "isRequired": False, "options": zanry},
+                           {"name": "skip", "isRequired": False}]}]
+
+    @staticmethod
+    def _koncert_nahled(a, popis=""):
+        return {"id": KPREFIX + a["id"][2:], "type": KONCERTY, "name": a["name"], "posterShape": "square",
+                "description": popis or f"Koncertů: {len(concertcat.group(a['files'], a['name']))}"}
+
+    def _koncerty_polozky(self, options, klic, skip, zanr, jazyk="cs"):
+        index = self.overovani.koncerty(options)
+        if klic == K_NOVE:   # interpreti podle nejnovějšího koncertu, celé najednou
+            if skip:
+                return []
+            videne, out = set(), []
+            for c in concertcat.recent(index, 500):
+                if c["artist_id"] not in videne:
+                    videne.add(c["artist_id"])
+                    nazev = f"{c['title']} ({c['year']})" if c["year"] else c["title"]
+                    out.append(self._koncert_nahled({"id": c["artist_id"], "name": c["artist"], "files": c["files"]},
+                                                    nazev))
+            return out[:STRANKA_VK]
+        tag = next((t for t in concertcat.TAGS if zanr and zanr in (t, self._zanr_nazev(t, jazyk),
+                                                                     self._zanr_nazev(t))), None)
+        if zanr and tag is None:
+            return []
+        rows = concertcat.by_tag(index, tag) if tag else sorted(
+            (a for letter in concertcat.letters(index) for a in concertcat.by_letter(index, letter)),
+            key=lambda a: a["name"].casefold())
+        return [self._koncert_nahled(a) for a in rows][skip:skip + STRANKA_VK]
 
     def _koncert(self, options, item_id):
-        """`nktk:<katalog>:<interpret>[:<koncert>]` → (interpret, koncerty z `concertcat.group`, číslo koncertu | None)."""
+        """`nktk:<interpret>[:<koncert>]` → (interpret, koncerty z `concertcat.group`, číslo koncertu | None)."""
         casti = str(item_id).split(":")
-        if casti[0] + ":" != KPREFIX or len(casti) not in (3, 4) or not casti[1].isdigit() or self.overovani is None:
+        if casti[0] + ":" != KPREFIX or len(casti) not in (2, 3) or not self.ma_koncerty(options):
             return None
-        vlastni, n = self.vlastni(options), int(casti[1])
-        if n >= len(vlastni) or vlastni[n]["t"] != "koncert":
+        index = self.overovani.koncerty(options)
+        koncerty = concertcat.artist(index, "a:" + casti[1])
+        if not koncerty:
             return None
-        r = next((x for x in self.overovani.polozky(options, vlastni[n]) if x["id"] == "a:" + casti[2]), None)
-        if r is None:
-            return None
-        poradi = int(casti[3]) if len(casti) == 4 and casti[3].isdigit() else None
-        return r["name"], concertcat.group(r["files"], r["name"]), poradi
+        jmeno = (((index.get("items") or {}).get("a:" + casti[1]) or {}).get("meta") or {}).get("name") or casti[1]
+        poradi = int(casti[2]) if len(casti) == 3 and casti[2].isdigit() else None
+        return jmeno, koncerty, poradi
 
     def koncert_meta(self, options, item_id):
         """Meta interpreta: každý jeho koncert jako „video“. None = takové id tu není."""
@@ -206,7 +247,7 @@ class Katalogy:
                 "description": f"Koncertů: {len(koncerty)}"}
 
     def koncert_soubory(self, options, item_id):
-        """Soubory jednoho koncertu (id se 4 částmi) jako popisy streamů pro `mapping.streams_response`."""
+        """Soubory jednoho koncertu (id se 3 částmi) jako popisy streamů pro `mapping.streams_response`."""
         k = self._koncert(options, item_id)
         if k is None or k[2] is None or k[2] >= len(k[1]):
             return []
@@ -237,27 +278,26 @@ class Katalogy:
     def manifest(self, options, jazyk="cs"):
         dashboard = [{"type": typ, "id": PREFIX + DASH + slug, "name": nazev}
                      for slug, typ, nazev in self.z_dashboardu()]
-        vlastni = [{"type": KONCERTY if c["t"] == "koncert" else c["t"], "id": f"{PREFIX}{VK}{i}", "name": c["n"],
+        vlastni = [{"type": c["t"], "id": f"{PREFIX}{VK}{i}", "name": c["n"],
                     "extra": [{"name": "skip", "isRequired": False}]}
                    for i, c in enumerate(self.vlastni(options))]
-        return dashboard + vlastni + [{"type": typ, "id": PREFIX + klic, "name": sk if jazyk == "sk" else cs,
+        return dashboard + vlastni + self._koncerty_manifest(options, jazyk) + [{"type": typ, "id": PREFIX + klic, "name": sk if jazyk == "sk" else cs,
                              "extra": [{"name": "skip", "isRequired": False}]}
                             for klic, typ, _zdroj, _cid, cs, sk in self.vybrane(options)]
 
-    def polozky(self, typ, katalog_id, skip=0, options=None):
+    def polozky(self, typ, katalog_id, skip=0, options=None, zanr="", jazyk="cs"):
         """Náhledy jedné stránky katalogu. None = takový katalog tahle instance nemá."""
         klic = katalog_id[len(PREFIX):] if str(katalog_id).startswith(PREFIX) else ""
+        if klic in (K_NOVE, K_ABECEDA):
+            if typ != KONCERTY or not self.ma_koncerty(options):
+                return None
+            return self._koncerty_polozky(options, klic, max(0, int(skip or 0)), zanr, jazyk)
         if klic.startswith(VK):
             vlastni = self.vlastni(options)
             poradi = klic[len(VK):]
             cat = vlastni[int(poradi)] if poradi.isdigit() and int(poradi) < len(vlastni) else None
-            if cat is None or (KONCERTY if cat["t"] == "koncert" else cat["t"]) != typ:
+            if cat is None or cat["t"] != typ:
                 return None
-            if cat["t"] == "koncert":   # interpreti s nálezem; plní se na pozadí, bez klíče Last.fm prázdné
-                if self.overovani is None:
-                    return []
-                skip = max(0, int(skip or 0))
-                return [self._koncert_nahled(int(poradi), r) for r in self.overovani.polozky(options, cat)][skip:skip + STRANKA_VK]
             if cat.get("ov") and self.overovani is not None:
                 # jen tituly, které ověřování označilo za vyhovující; plní se postupně na pozadí
                 skip = max(0, int(skip or 0))

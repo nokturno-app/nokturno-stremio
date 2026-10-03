@@ -836,24 +836,30 @@ class TestKatalogy(unittest.TestCase):
         self.assertNotIn("dabing", nabidka)
         self.assertNotIn("tmdb.trendy.filmy", html, "bez klíče TMDB se jeho katalogy nenabízejí")
 
-    def test_novy_profil_ma_predvolby_vlastnich_katalogu(self):
-        """Nový profil dostane předvolby (`mycat.PRESETS`) předvyplněné ve vlastních katalozích, existující beze změny."""
+    def test_formular_nabizi_sablony_bez_predvoleb(self):
+        """10.0: nový profil nedostane žádné vlastní katalogy, formulář nabídne šablony (`mycat.TEMPLATES`)."""
         import json
         from nokturno import config
+        from nokturno.core.lib import mycat
 
-        def vychozi(html):
-            radek = next(r for r in html.splitlines() if r.startswith("const VYCHOZI_VK = "))
-            return json.loads(radek[len("const VYCHOZI_VK = "):].split(";   //")[0])
-        self.assertEqual(len(vychozi(self.r.route("/configure", ZAKLAD).html)), 9)
-        nove = vychozi(self.r.route("/configure", ZAKLAD).html)
-        self.assertEqual([c["n"] for c in nove if c["t"] == "series"],
-                         ["Populární", "Nejlépe hodnocené", "Nové s CZ dabingem", "České seriály"])
-        hq = next(c for c in nove if c["n"] == "Filmy ve vysoké kvalitě")
-        self.assertEqual((hq["ov"], hq["q"], hq["z"]), (1, "4", "found"))
-        self.assertEqual(sum(1 for c in nove if c.get("ov")), 3)
-        self.assertEqual(config.vlastni_katalogy(nove), nove)
-        self.assertEqual(vychozi(self.r.route("/configure", ZAKLAD, jazyk="sk").html)[0]["n"], "Populárne")
-        self.assertEqual(vychozi(self.r.route(f"/c/{KOUSEK}/configure", ZAKLAD).html), [])
+        html = self.r.route("/configure", ZAKLAD).html
+        radek = next(r for r in html.splitlines() if r.startswith("const SABLONY = "))
+        sablony = json.loads(radek[len("const SABLONY = "):].split(";   //")[0])
+        self.assertEqual([t["key"] for t in sablony], [t["key"] for t in mycat.TEMPLATES])
+        self.assertNotIn("VYCHOZI_VK", html)
+        self.assertIn('name="koncerty_zanry"', html)
+        self.assertNotIn("vychozi_vlastni_katalogy", dir(config))
+
+    def test_zeme_puvodu(self):
+        from nokturno import config
+        vk = config.vlastni_katalogy([{"n": "A", "t": "movie", "zeme": ["CZ", "XX", "SK", "CZ", 5]},
+                                      {"n": "B", "t": "movie", "l": "ko"}])
+        self.assertEqual(vk[0]["zeme"], ["CZ", "SK"])
+        self.assertEqual(config.vk_parametry(vk[0])["with_origin_country"], "CZ|SK")
+        self.assertNotIn("with_original_language", config.vk_parametry({**vk[0], "l": "cs"}))
+        self.assertEqual(config.vk_parametry(vk[1]), {"with_original_language": "ko"})   # starý katalog dál funguje
+        self.assertEqual(len(config.vlastni_katalogy([{"n": "C", "t": "movie", "zeme": list(
+            ("CZ", "SK", "US", "GB", "FR", "DE", "IT"))}])[0]["zeme"]), 5)
 
     def test_formular_nabizi_jen_doporucene_ale_stare_dal_funguji(self):
         """2026-09-15: nabídka sjednocená s Kodi menu (`DOPORUCENE`) — starší
@@ -3456,7 +3462,7 @@ class TestProfily(unittest.TestCase):
 
 
 class TestKatalogKoncertu(unittest.TestCase):
-    """Vlastní katalog koncertů: validace, ověřování s falešnými Last.fm a zdroji, manifest, meta a stream."""
+    """Koncerty (volba `koncerty_zanry`): validace, ověřování s falešnými Last.fm a zdroji, manifest, meta a stream."""
 
     SOUBORY = [{"ref": "ws:abc", "name": "Metallica Live in Seoul 2017 1080p.mkv", "size": 9_000_000_000,
                 "duration": 0, "source": "ws"},
@@ -3476,12 +3482,17 @@ class TestKatalogKoncertu(unittest.TestCase):
             def sources(self):
                 return {"webshare": True}
 
+            def _opt(self, key, default=""):
+                return options.get(key, default)
+
         class Enginy:
             def pro(self, options):
                 return Engine()
 
         options = config.from_mapping({"lastfm_key": "ab12", "hs_enabled": True,
                                        "vk": [{"n": "Rock", "t": "koncert", "g": ["metal", "zly", "rock"]}]})
+        self.assertEqual(options["koncerty_zanry"], "metal,rock")   # beta 1: koncertní katalog → volba profilu
+        self.assertNotIn("vk", options)
         kousek = config.encode(options)
 
         class Profily:
@@ -3495,7 +3506,7 @@ class TestKatalogKoncertu(unittest.TestCase):
         ov = ovr.Overovani(d, Enginy(), None, Profily())
         k = kat.Katalogy(d, dash=None)
         k.overovani = ov
-        pool = [{"id": "a:metallica", "name": "Metallica"}, {"id": "a:nikdo", "name": "Nikdo"}]
+        pool = [{"id": "a:metallica", "name": "Metallica", "tags": ["metal"]}, {"id": "a:nikdo", "name": "Nikdo", "tags": ["rock"]}]
         hledani = lambda e, artist, rivals=(), stop=None: (soubory or self.SOUBORY) if artist == "Metallica" else []
         patcher = (mock.patch.object(concertcat, "pool", lambda key, tags: pool),
                    mock.patch.object(concertcat, "search", hledani))
@@ -3505,43 +3516,51 @@ class TestKatalogKoncertu(unittest.TestCase):
         return options, k, ov
 
     def test_validace(self):
-        vk = config.vlastni_katalogy([{"n": "R", "t": "koncert", "g": ["metal", "zly", "rock"], "z": "xx", "ov": 0},
-                                      {"n": "Bez žánru", "t": "koncert", "g": ["zly"]}])
-        self.assertEqual(vk, [{"n": "R", "t": "koncert", "g": ["metal", "rock"], "ov": 1, "z": "pool"}])
+        self.assertEqual(config.vlastni_katalogy([{"n": "R", "t": "koncert", "g": ["metal"]}]), [])
+        self.assertEqual(config.from_mapping({"koncerty_zanry": "rock,zly,metal"})["koncerty_zanry"], "metal,rock")
+        self.assertNotIn("koncerty_zanry", config.from_mapping({"koncerty_zanry": "zly"}))
+        self.assertEqual(config.from_mapping({"koncerty_zanry": "pop", "vk": [{"n": "R", "t": "koncert", "g": ["metal"]}]})
+                         ["koncerty_zanry"], "pop", "nastavená volba má přednost před migrací")
         self.assertNotIn("lastfm_key", config.from_mapping({"lastfm_key": "není-hex"}))
         self.assertEqual(config.from_mapping({"lastfm_key": " AB12 "})["lastfm_key"], "ab12")
 
     def test_prvni_krok_overi_celou_davku(self):
         options, k, ov = self._vse()
         self.assertTrue(ov.krok())
-        cat = config.vlastni_katalogy(options["vk"])[0]
-        self.assertEqual([r["name"] for r in ov.polozky(options, cat)], ["Metallica"])
+        self.assertEqual([a["name"] for a in __import__("nokturno.core.lib.concertcat", fromlist=["x"]).by_letter(
+            ov.koncerty(options), "M")], ["Metallica"])
         self.assertFalse(ov.krok())
 
     def test_bez_klice_lastfm_se_nic_nestane(self):
         options, k, ov = self._vse()
         options.pop("lastfm_key")
-        self.assertIsNone(ov._pool(options, config.vlastni_katalogy(options["vk"])[0]))
+        self.assertIsNone(ov.klic_koncertu(options))
+        self.assertFalse(ov.krok())
+        self.assertFalse(k.ma_koncerty(options))
 
     def test_manifest_katalog_meta_a_stream(self):
         options, k, ov = self._vse()
         ov.krok()
         self.assertTrue(k.ma_koncerty(options))
-        self.assertEqual([(c["type"], c["name"]) for c in k.manifest(options)], [("Koncerty", "Rock")])
-        m = mapping.manifest("1.0.0", ["x"], katalogy=k.manifest(options), koncerty=True)
+        man = k.manifest(options)
+        self.assertEqual([(c["type"], c["name"]) for c in man], [("Koncerty", "Nově přidané"), ("Koncerty", "Podle abecedy")])
+        self.assertEqual(man[1]["extra"][0]["options"], ["Metal", "Rock"])
+        m = mapping.manifest("1.0.0", ["x"], katalogy=man, koncerty=True)
         self.assertIn({"name": "meta", "types": ["Koncerty"], "idPrefixes": ["nktk:"]}, m["resources"])
         self.assertIn("Koncerty", m["types"])
-        metas = k.polozky("Koncerty", "nokturno.vk.0", 0, options)
-        self.assertEqual([x["id"] for x in metas], ["nktk:0:metallica"])
-        self.assertEqual(metas[0]["posterShape"], "square")
-        self.assertIsNone(k.polozky("movie", "nokturno.vk.0", 0, options))
-        meta = k.koncert_meta(options, "nktk:0:metallica")
-        self.assertEqual(len(meta["videos"]), 1)
-        self.assertEqual(meta["videos"][0]["id"], "nktk:0:metallica:0")
-        self.assertEqual([p["url"] for p in k.koncert_soubory(options, "nktk:0:metallica:0")], ["ws:abc", "hs:1:ff"])
-        self.assertIsNone(k.koncert_meta(options, "nktk:0:neznamy"))
-        self.assertEqual(k.koncert_soubory(options, "nktk:0:metallica:9"), [])
-        self.assertEqual(k.koncert_soubory(options, "nktk:7:metallica:0"), [])
+        nove = k.polozky("Koncerty", "nokturno.koncerty.nove", 0, options)
+        self.assertEqual([x["id"] for x in nove], ["nktk:metallica"])
+        self.assertIn("Live in Seoul", nove[0]["description"])
+        self.assertEqual(nove[0]["posterShape"], "square")
+        self.assertEqual([x["id"] for x in k.polozky("Koncerty", "nokturno.koncerty.abeceda", 0, options)], ["nktk:metallica"])
+        self.assertEqual(k.polozky("Koncerty", "nokturno.koncerty.abeceda", 0, options, zanr="Jazz"), [])
+        self.assertIsNone(k.polozky("movie", "nokturno.koncerty.nove", 0, options))
+        meta = k.koncert_meta(options, "nktk:metallica")
+        self.assertEqual((meta["name"], len(meta["videos"])), ("Metallica", 1))
+        self.assertEqual(meta["videos"][0]["id"], "nktk:metallica:0")
+        self.assertEqual([p["url"] for p in k.koncert_soubory(options, "nktk:metallica:0")], ["ws:abc", "hs:1:ff"])
+        self.assertIsNone(k.koncert_meta(options, "nktk:neznamy"))
+        self.assertEqual(k.koncert_soubory(options, "nktk:metallica:9"), [])
 
     def test_routy_meta_a_stream(self):
         options, k, ov = self._vse()
@@ -3549,12 +3568,14 @@ class TestKatalogKoncertu(unittest.TestCase):
         r = router()
         r.katalogy = k
         kousek = config.encode(options)
-        meta = r.route(f"/c/{kousek}/meta/Koncerty/nktk:0:metallica.json", ZAKLAD)
+        meta = r.route(f"/c/{kousek}/meta/Koncerty/nktk:metallica.json", ZAKLAD)
         self.assertEqual(meta.data["meta"]["name"], "Metallica")
-        self.assertEqual(r.route(f"/c/{kousek}/meta/movie/nktk:0:metallica.json", ZAKLAD).status, 404)
-        st = r.route(f"/c/{kousek}/stream/Koncerty/nktk:0:metallica:0.json", ZAKLAD)
+        self.assertEqual(r.route(f"/c/{kousek}/meta/movie/nktk:metallica.json", ZAKLAD).status, 404)
+        st = r.route(f"/c/{kousek}/stream/Koncerty/nktk:metallica:0.json", ZAKLAD)
         self.assertEqual(len(st.data["streams"]), 2)
-        self.assertEqual(r.route(f"/c/{kousek}/stream/Koncerty/nktk:0:metallica:5.json", ZAKLAD).data["streams"], [])
+        self.assertEqual(r.route(f"/c/{kousek}/stream/Koncerty/nktk:metallica:5.json", ZAKLAD).data["streams"], [])
+        kat = r.route(f"/c/{kousek}/catalog/Koncerty/nokturno.koncerty.abeceda/genre=Metal.json", ZAKLAD)
+        self.assertEqual([x["id"] for x in kat.data["metas"]], ["nktk:metallica"])
 
 
 class TestSpravce(unittest.TestCase):

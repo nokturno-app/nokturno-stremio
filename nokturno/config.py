@@ -83,6 +83,8 @@ VK_MAX = 20   # nastavení je v profilu, ne v adrese; ověřované katalogy se p
 VK_KLICOVA_SLOVA = {"fairy": "3205|329731|358931|351899"}   # pohádky: TMDB je má jen jako klíčové slovo
 LASTFM_RE = re.compile(r"^[0-9a-f]{1,64}$")
 VK_RAZENI = ("popularity.desc", "vote_average.desc", "primary_release_date.desc")
+# žánry koncertů (štítky Last.fm, `concertcat.TAGS`) oddělené čárkou; prázdné = koncerty vypnuté
+KONCERTY_KLIC = "koncerty_zanry"
 # klíče, u kterých engine čeká pravdivostní hodnotu, ne řetězec
 LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d", "hide_lowq")
 
@@ -108,8 +110,9 @@ def from_mapping(raw):
     použít i configure stránka z fáze 4.
     """
     options = dict(VYCHOZI)
+    stare_koncerty = []   # beta 1 měla koncerty jako druh vlastního katalogu (`t == "koncert"`)
     for key, value in (raw or {}).items():
-        if value is None or (key not in set(PROSTREDI.values()) and key not in (ID_KLIC, CZ_KLIC, JAZYK_KLIC, VK_KLIC)):
+        if value is None or (key not in set(PROSTREDI.values()) and key not in (ID_KLIC, CZ_KLIC, JAZYK_KLIC, VK_KLIC, KONCERTY_KLIC)):
             continue
         if key == CZ_KLIC:
             if isinstance(value, str) and CZ_RE.match(value.strip()):
@@ -120,7 +123,13 @@ def from_mapping(raw):
             if isinstance(value, str) and LASTFM_RE.match(value.strip().lower()):
                 options[key] = value.strip().lower()
             continue
+        if key == KONCERTY_KLIC:
+            zanry = koncerty_zanry(value)
+            if zanry:
+                options[key] = ",".join(zanry)
+            continue
         if key == VK_KLIC:
+            stare_koncerty = _stare_koncerty(value)
             vk = vlastni_katalogy(value)
             if vk:
                 options[key] = json.dumps(vk, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
@@ -143,6 +152,8 @@ def from_mapping(raw):
         else:
             options[key] = str(value).strip()
 
+    if stare_koncerty and KONCERTY_KLIC not in options:
+        options[KONCERTY_KLIC] = ",".join(koncerty_zanry(stare_koncerty))
     # „nezáleží" nese formulář jako ANY: prázdnou hodnotu by z adresy zahodil a server
     # dosadil výchozí CZ (2026-09-14)
     if options.get("pref_lang") == "ANY":
@@ -168,13 +179,8 @@ def _vk_jeden(c):
     """Jeden katalog z formuláře → čistý záznam, nebo None. Hodnoty jsou od kohokoli."""
     if not isinstance(c, dict):
         return None
-    if c.get("t") == "koncert":   # katalog koncertů: jen název, žánry Last.fm a řazení; ověřuje se vždy
-        tagy = sorted({str(x) for x in c.get("g") or [] if str(x) in concertcat.TAGS})
-        nazev = " ".join(str(c.get("n") or "").split())[:40]
-        if not (nazev and tagy):
-            return None
-        return {"n": nazev, "t": "koncert", "g": tagy, "ov": 1,
-                "z": c.get("z") if c.get("z") in concertcat.SHOWS else "pool"}
+    if c.get("t") == "koncert":   # koncerty mají vlastní sekci (`KONCERTY_KLIC`), převádí je `from_mapping`
+        return None
     try:
         g = [int(x) for x in c.get("g") or []][:10]
     except (TypeError, ValueError):
@@ -192,6 +198,9 @@ def _vk_jeden(c):
         hodnota = str(c.get(pole) or "").strip()
         if hodnota and DISCOVER_PARAMS[param].match(hodnota) and "posl" not in out:
             out[pole] = hodnota
+    zeme = mycat_lib.countries_of({"countries": [str(x) for x in c.get("zeme") or [] if isinstance(x, str)]})
+    if zeme:   # země původu; starý „původní jazyk“ `l` dál platí, formulář ho při úpravě převede na zemi
+        out["zeme"] = zeme
     if c.get("s") in VK_RAZENI:
         out["s"] = c["s"]
     if c.get("ov") in (1, True, "1", "true"):   # ověřování dostupnosti streamů (`overovani.py`)
@@ -208,36 +217,30 @@ def _vk_jeden(c):
     return out if out["n"] else None
 
 
-def vlastni_katalogy(value):
-    """Hodnota `vk` (JSON řetězec nebo seznam) → nejvýš `VK_MAX` čistých katalogů."""
+def _seznam(value):
     if isinstance(value, str):
         try:
             value = json.loads(value)
         except ValueError:
             return []
-    if not isinstance(value, list):
-        return []
-    return [c for c in (_vk_jeden(x) for x in value[:VK_MAX]) if c]
+    return value if isinstance(value, list) else []
 
 
-VK_PREDVOLBY_SK = {"Populární": "Populárne", "Nejlépe hodnocené": "Najlepšie hodnotené",
-                   "Nové s CZ dabingem": "Nové s CZ dabingom", "Filmy ve vysoké kvalitě": "Filmy vo vysokej kvalite"}
+def _stare_koncerty(value):
+    """Žánry koncertních katalogů bety 1 z hodnoty `vk`."""
+    return [str(t) for c in _seznam(value) if isinstance(c, dict) and c.get("t") == "koncert" for t in c.get("g") or []]
 
 
-def vychozi_vlastni_katalogy(jazyk="cs"):
-    """Předvolby vlastních katalogů (`mycat.PRESETS`) v tvaru `vk` – předvyplní se jen v novém profilu,
-    uživatel je ve formuláři upraví nebo smaže jako každý jiný katalog."""
-    out = []
-    for _pid, kind, nazev, pole in mycat_lib.PRESETS:
-        c = {"n": VK_PREDVOLBY_SK.get(nazev, nazev) if jazyk == "sk" else nazev, "t": kind, "s": pole["sort"]}
-        if pole.get("lang"):
-            c["l"] = pole["lang"]
-        if pole.get("years"):
-            c["posl"] = pole["years"]
-        if pole.get("verify"):
-            c.update(ov=1, z=pole.get("show", "found"), q=pole.get("q", 0), a=pole.get("audio", ""))
-        out.append(c)
-    return vlastni_katalogy(out)
+def koncerty_zanry(value):
+    """Hodnota `koncerty_zanry` (čárkami nebo seznam) → platné štítky v pořadí `concertcat.TAGS`."""
+    kusy = value if isinstance(value, (list, tuple)) else str(value or "").split(",")
+    chtene = {str(k).strip() for k in kusy}
+    return [t for t in concertcat.TAGS if t in chtene]
+
+
+def vlastni_katalogy(value):
+    """Hodnota `vk` (JSON řetězec nebo seznam) → nejvýš `VK_MAX` čistých katalogů."""
+    return [c for c in (_vk_jeden(x) for x in _seznam(value)[:VK_MAX]) if c][:VK_MAX]
 
 
 def vk_parametry(c):
@@ -247,15 +250,14 @@ def vk_parametry(c):
         year_from, year_to = str(datetime.date.today().year - int(c["posl"]) + 1), ""
     params = {"with_genres": ("|" if c.get("j") == "or" else ",").join(str(x) for x in c.get("g") or []),
               "with_keywords": "|".join(VK_KLICOVA_SLOVA[k] for k in c.get("k") or []),
-              "with_original_language": c.get("l") or "", "year_from": year_from,
+              "with_origin_country": "|".join(c.get("zeme") or []),
+              "with_original_language": "" if c.get("zeme") else c.get("l") or "", "year_from": year_from,
               "year_to": year_to, "sort_by": c.get("s") or ""}
     return {k: v for k, v in params.items() if v}
 
 
 def vk_definice(c):
     """Požadavky na stream ověřovaného katalogu → argumenty `Engine.verify_title` (po typu a id)."""
-    if c.get("t") == "koncert":   # stejný podpis jako `mycat.sig` u koncertního katalogu
-        return ("concert", False, ",".join(sorted(c.get("g") or [])))
     return (mycat_lib.norm_quality(c.get("q")), bool(c.get("ch")), c.get("a") or "", c.get("ti") or "")
 
 

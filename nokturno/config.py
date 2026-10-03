@@ -80,7 +80,7 @@ JAZYK_KLIC = "jazyk"
 # vlastní katalogy (`katalogy.py`) — jen z adresy, formulář je ukládá jako JSON řetězec
 VK_KLIC = "vk"
 VK_MAX = 20   # nastavení je v profilu, ne v adrese; ověřované katalogy se počítají do `mycat.MAX_VERIFIED` na zařízení
-VK_KLICOVA_SLOVA = {"fairy": "3205|329731|358931|351899"}   # pohádky: TMDB je má jen jako klíčové slovo
+VK_KLICOVA_SLOVA = mycat_lib.KEYWORDS   # témata (pohádky, Vánoce…): TMDB je má jen jako klíčová slova
 LASTFM_RE = re.compile(r"^[0-9a-f]{1,64}$")
 VK_RAZENI = ("popularity.desc", "vote_average.desc", "primary_release_date.desc", mycat_lib.ALPHA)
 # žánry koncertů (štítky Last.fm, `concertcat.TAGS`) oddělené čárkou; prázdné = koncerty vypnuté
@@ -193,7 +193,7 @@ def _vk_jeden(c):
     except (TypeError, ValueError):
         g = []
     out = {"n": " ".join(str(c.get("n") or "").split())[:40], "t": "series" if c.get("t") == "series" else "movie",
-           "g": [x for x in g if 0 < x < 1000000], "k": [k for k in c.get("k") or [] if k in VK_KLICOVA_SLOVA][:3],
+           "g": [x for x in g if 0 < x < 1000000], "k": [k for k in c.get("k") or [] if k in VK_KLICOVA_SLOVA][:mycat_lib.MAX_KEYWORDS],
            "j": "or" if c.get("j") == "or" else "and"}
     try:
         posl = int(c.get("posl") or 0)

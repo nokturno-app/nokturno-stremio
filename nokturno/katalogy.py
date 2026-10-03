@@ -21,7 +21,7 @@ nenabízejí a jsou v manifestu vždy, první v pořadí. Mění se bez vydání
 i pořadí počítá server. Složku Stremio neumí, takže podkategorie jdou jako samostatné
 katalogy s názvem „Vánoce: Komedie“.
 
-Vlastní katalogy (od 8.5.0): uživatel si ve formuláři poskládá až pět katalogů z žánrů, jazyka,
+Vlastní katalogy (od 8.5.0): uživatel si ve formuláři poskládá až dvacet katalogů z žánrů, témat, jazyka,
 let a řazení (volba `vk`, viz `config.vlastni_katalogy`; s volbou `ov` jen tituly se streamem podle
 požadavků, ověřuje je `overovani.py` na pozadí). Jdou v manifestu hned za katalogy
 z dashboardu, tituly skládá dashboard (`DashApi.discover`, stránka po 20 titulech, cache 12 h

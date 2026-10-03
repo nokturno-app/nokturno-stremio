@@ -720,10 +720,10 @@
         <p>Záznamy koncertov obľúbených interpretov vybraných žánrov. Vo Stremiu pribudne druh Koncerty so zoznamami Nové pridané a Podľa abecedy (s výberom žánru). Hľadá sa na pozadí, kým aplikácia beží, takže sa zoznam zapĺňa postupne. Po zmene pridaj doplnok znova.</p>
         <div class="vk-zanry" id="koncerty-zanry"></div>
         <input type="hidden" name="koncerty_zanry">
-        <div id="lastfm-blok" hidden>
+        <div id="lastfm-blok">
           <label class="pole"><span>Last.fm API kľúč</span>
             <span class="heslo"><input type="password" name="lastfm_key" maxlength="64" autocomplete="off" spellcheck="false"></span></label>
-          <p class="drobne">Kľúč zadarmo na last.fm/api. Bez neho sa koncerty nehľadajú.</p>
+          <p class="drobne">Bez kľúča sa koncerty nehľadajú. Zadarmo ho dostaneš na <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener">last.fm/api/account/create</a> (stačí účet na Last.fm, meno a popis aplikácie vyplň ľubovoľne).</p>
         </div>
       </div>
     </section>
@@ -884,7 +884,7 @@
     <details>
       <summary>Má Nokturno vlastné katalógy?</summary>
       <div class="obsah">
-        <p>Voliteľne áno – v kroku 2 zapneš rebríčky a poskladáš si až päť vlastných katalógov podľa žánru, jazyka a rokov. Plagáty a popisy dodá Stremio
+        <p>Voliteľne áno – v kroku 2 zapneš rebríčky a poskladáš si až dvadsať vlastných katalógov podľa žánru, témy, jazyka a rokov. Plagáty a popisy dodá Stremio
           (Cinemeta). Nokturno k titulu nájde streamy z tvojho úložiska a zo zapnutých zdrojov.</p>
       </div>
     </details>
@@ -1227,26 +1227,24 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
   const TAGY = [["czech", "Česká scéna"], ["slovak", "Slovenská scéna"], ["czech rock", "Český rock"], ["classic rock", "Classic rock"], ["hard rock", "Hard rock"], ["metal", "Metal"], ["rock", "Rock"], ["pop", "Pop"], ["punk", "Punk"], ["hip-hop", "Hip-hop"], ["jazz", "Jazz"], ["electronic", "Elektronika"], ["folk", "Folk"], ["classical", "Klasika"], ["reggae", "Reggae"], ["world", "World"]];
   const obal = $("koncerty-zanry"), skryte = form.elements["koncerty_zanry"];
   const zvolene = new Set(String(skryte.value || "").split(",").filter(Boolean));
-  const ukaz = () => { $("lastfm-blok").hidden = !skryte.value; };
   for (const [id, n] of TAGY) {
     const box = Object.assign(document.createElement("input"), {type: "checkbox", checked: zvolene.has(id)});
     box.addEventListener("change", () => {
       if (box.checked) zvolene.add(id); else zvolene.delete(id);
       skryte.value = TAGY.map(([v]) => v).filter((v) => zvolene.has(v)).join(",");
-      ukaz(); prekresli();
+      prekresli();
     });
     const label = document.createElement("label");
     label.append(box, n);
     obal.append(label);
   }
-  ukaz();
 })();
 
 function nastaveni() {
   const out = {};
   for (const pole of form.elements) {
     if (!pole.name) continue;
-    if (pole.name === "lastfm_key" && $("lastfm-blok").hidden) continue;   // klíč jen se zapnutými koncerty
+    if (pole.name === "lastfm_key" && !form.elements["koncerty_zanry"].value) continue;   // klíč jen se zapnutými koncerty
     // checkbox jde do adresy vždy — odškrtnutý dřív chyběl a server dosadil výchozí „zapnuto“,
     // takže HellSpy šel zapnout, ale ne vypnout (2026-09-14)
     if (pole.type === "checkbox") out[pole.name] = pole.checked;

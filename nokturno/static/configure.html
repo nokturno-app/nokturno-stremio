@@ -346,7 +346,7 @@
     <!-- ============================== 1. ZDROJE ============================== -->
     <section id="zdroje">
       <h2><b>1</b>Vlastní úložiště a zdroje</h2>
-      <p class="popis">Nokturno je především přehrávač <strong>tvého vlastního úložiště</strong> – nastav ho hned první kartou. Volitelně k němu můžeš připojit i veřejné vyhledávače třetích stran; účty zůstávají jen v adrese doplňku, server je nikam neukládá (výjimka je přihlášení CZtor, viz Časté otázky).</p>
+      <p class="popis">Nokturno je především přehrávač <strong>tvého vlastního úložiště</strong> – nastav ho hned první kartou. Volitelně k němu můžeš připojit i veřejné vyhledávače třetích stran; účty zůstávají v aplikaci u tebe a na server Nokturna se neposílají (viz Časté otázky).</p>
 
       <p class="popis">Vyhledávače třetích stran – volitelná doplňková služba. Nokturno u nich žádný obsah nehostí ani neposkytuje, jen se na ně dotazuje tvým účtem.</p>
 
@@ -576,7 +576,7 @@
           <h3>Přehraj.to</h3>
           <span class="stitek">Volitelné · účet nutný</span>
         </div>
-        <p>Česká úschovna s velkým výběrem. Ve Stremiu potřebuje <strong>účet</strong> (na rozdíl od Kodi, kde jede i bez něj) – server je jedna IP a bez přihlášení by ho Přehraj.to hned omezil. S Premium účtem se hraje původní soubor včetně 4K, jinak překódovaná verze v 1080p. <strong>Hraje i ve webovém přehrávači</strong> (přímá adresa na CDN, žádná proxy).</p>
+        <p>Česká úschovna s velkým výběrem. Ve Stremiu potřebuje <strong>účet</strong> (na rozdíl od Kodi, kde jede i bez něj) – bez přihlášení by ho Přehraj.to hned omezil. S Premium účtem se hraje původní soubor včetně 4K, jinak překódovaná verze v 1080p. <strong>Hraje i ve webovém přehrávači</strong> (přímá adresa na CDN, žádná proxy).</p>
         <div class="dvojice">
           <label class="pole"><span>E-mail</span>
             <input type="text" name="pt_email" autocapitalize="off" spellcheck="false"></label>
@@ -817,14 +817,16 @@
     <h2><b>?</b>Časté otázky</h2>
 
     <details>
-      <summary>Nainstaloval jsem to, ale u filmu nevidím žádné streamy Nokturna</summary>
+      <summary>Doplněk je přidaný, ale u filmu nejsou žádné streamy Nokturna</summary>
       <div class="obsah">
         <ul>
-          <li>Klikni výše na <strong>Ověřit účet</strong> – nejčastější příčinou je překlep v hesle nebo vypršelé VIP na WebShare.</li>
+          <li>Nahoře klikni na <strong>✓ Ověřit všechny účty</strong> – nejčastější příčinou je překlep v hesle nebo vypršelé VIP na WebShare.</li>
+          <li>Aplikace Nokturno musí běžet. Když počítač, box nebo NAS s ní spí, Stremio streamy Nokturna nedostane.</li>
           <li>Hledání trvá pár sekund. Stremio ukazuje streamy postupně, jak které doplňky odpovídají – chvilku počkej.</li>
           <li>Titul nemusí na zdrojích vůbec být, hlavně úplné novinky a málo známé seriály.</li>
           <li>Nokturno bere jen soubory, které k titulu opravdu patří (název, rok, díl). Podobné, ale jiné filmy záměrně vynechá.</li>
         </ul>
+        <p>Podrobně: <a href="https://nokturno-app.github.io/nokturno-napoveda/cs/stremio-zadne-streamy" target="_blank" rel="noopener">U filmu nejsou streamy Nokturna</a>.</p>
       </div>
     </details>
 
@@ -835,6 +837,7 @@
           <li>U WebShare bez VIP je rychlost omezená – přehrávání pak neustále čeká.</li>
           <li>Zkus menší soubor (nižší kvalitu), nebo v předvolbách nastav <strong>nejvyšší datový tok</strong> podle svého internetu.</li>
           <li>WebShare občas hlásí „soubor dočasně nedostupný“ – stačí vybrat jiný stream.</li>
+          <li>Vlastní úložiště a FastShare hrají jen v aplikaci Stremio, ne ve webovém přehrávači.</li>
         </ul>
       </div>
     </details>
@@ -842,19 +845,21 @@
     <details>
       <summary>Jak nastavení později změnit?</summary>
       <div class="obsah">
-        <p>Ve Stremiu otevři <strong>Doplňky</strong> → <strong>Nokturno</strong> → ikona ozubeného kola (<em>Konfigurovat</em>).
-          Otevře se tato stránka s tvým současným nastavením. Uprav, co potřebuješ, a znovu klikni na <strong>Přidat do Stremia</strong> (nebo Nuvia).</p>
-        <p>Změněné nastavení je nová adresa – starou verzi doplňku pak ve Stremiu odinstaluj, jinak tam Nokturno zůstane dvakrát.</p>
+        <p>Ve Stremiu otevři <strong>Doplňky</strong> → <strong>Nokturno</strong> → ikona ozubeného kola (<em>Konfigurovat</em>),
+          nebo tuhle stránku přímo v prohlížeči. Uprav, co potřebuješ, a klikni na <strong>Uložit změny</strong>.</p>
+        <p>Účty a předvolby platí hned, doplněk znovu přidávat nemusíš. Jen když měníš <strong>vlastní katalogy</strong> nebo
+          <strong>koncerty</strong>, doplněk ve Stremiu odinstaluj a přidej znovu – Stremio si seznam katalogů pamatuje.</p>
       </div>
     </details>
 
     <details>
       <summary>Kde jsou moje hesla uložená? Je to bezpečné?</summary>
       <div class="obsah">
-        <p>Nikde na serveru. Celé nastavení je zakódované v adrese doplňku, kterou má uloženou tvoje Stremio.
-          Server ho při každém dotazu jen přečte, použije a zapomene. Tak fungují všechny konfigurovatelné doplňky Stremia.</p>
-        <p>Jediná výjimka je CZtor: jeho přihlášení drží server zašifrované klíčem, který je jen v tvé adrese doplňku. Bez adresy ho nikdo nepřečte.</p>
-        <p>Proto adresu nikomu neposílej. Kdo chce heslo WebShare v adrese nečitelné, může místo něj vložit salted hash (viz návod u WebShare).</p>
+        <p>Jen u tebe. Nastavení si aplikace Nokturno ukládá jako profil ve své datové složce (soubor <code>profily.json</code>,
+          čitelný jen pro aplikaci). Adresa doplňku ve Stremiu nese jen náhodný klíč profilu, žádná hesla.
+          Na server Nokturna se účty nikdy neposílají. (Ve starém režimu bez profilů je celé nastavení přímo v adrese doplňku.)</p>
+        <p>Klíč profilu přesto nikomu neposílej – kdo zná adresu doplňku a dosáhne na tvoji aplikaci, může přes tvoje účty hledat.
+          Kdo chce mít heslo WebShare nečitelné i v profilu, může místo něj vložit salted hash (viz návod u WebShare).</p>
       </div>
     </details>
 
@@ -863,29 +868,39 @@
       <div class="obsah">
         <p>Ano, anonymní – stejně jako Nokturno pro Kodi a Home Assistant. Nejvýš jednou za 6 hodin odejde náhodný
           identifikátor tvého nastavení, verze doplňku, které zdroje máš zapnuté a u kterých titulů se otevřely streamy.
-          Žádné účty, hesla ani adresa doplňku se neposílají. Slouží jen k tomu, abychom věděli, co se používá. Aplikace k tomu přidá náhodný identifikátor serveru, jak běží
-          (počítač, Android, Home Assistant, VPS), systém a počet nastavení. Vypnout jde v <code>nokturno.json</code>
-          volbami <code>"stats": false</code> a <code>"crash_reports": false</code>.</p>
+          Aplikace k tomu přidá náhodný identifikátor serveru, jak běží (počítač, Android, Home Assistant, VPS), systém a počet nastavení.
+          Žádné účty, hesla ani adresa doplňku se neposílají. Slouží jen k tomu, abychom věděli, co se používá.
+          Vypnout jde v <code>nokturno.json</code> volbami <code>"stats": false</code> a <code>"crash_reports": false</code>.</p>
       </div>
     </details>
 
     <details>
-      <summary>Jak nahlásit chybu v Kodi doplňku Nokturno?</summary>
+      <summary>Jak nahlásit chybu?</summary>
       <div class="obsah">
-        <p>V nastavení doplňku je v kategorii <strong>Pokročilé → Údržba</strong> tlačítko
-          <strong>Odeslat log Kodi</strong>. Pošle posledních pár set kilobajtů souboru
-          <code>kodi.log</code> na náš server – bez hesel a účtů, jen technický záznam toho,
-          co doplněk dělal. Před odesláním se ještě zeptá na potvrzení.</p>
-        <p>Log pak sami zkontrolujeme. Napiš k tomu i pár slov, co se stalo a kdy
-          (na <a href="https://discord.gg/ChmMPmDDEj" target="_blank" rel="noopener">Discord</a> do fóra #pomoc), ať víme, který log hledat.</p>
+        <p>Napiš na <a href="https://discord.gg/ChmMPmDDEj" target="_blank" rel="noopener">Discord</a> do fóra #pomoc: verzi aplikace, na čem běží (počítač, Android, NAS…), u kterého titulu a co se stalo. Nečekané pády
+          aplikace nám chodí samy, bez účtů a hesel.</p>
+        <p>V Kodi je v nastavení doplňku <strong>Pokročilé → Údržba → Odeslat log Kodi</strong>, k tomu napiš pár slov na Discord.</p>
       </div>
     </details>
 
     <details>
       <summary>Má Nokturno vlastní katalogy?</summary>
       <div class="obsah">
-        <p>Volitelně ano – v kroku 2 zapneš žebříčky a poskládáš si až dvacet vlastních katalogů podle žánru, tématu, jazyka a let. Plakáty a popisy dodá Stremio
-          (Cinemeta). Nokturno k titulu najde streamy z tvého úložiště a ze zapnutých zdrojů.</p>
+        <p>Ano. V kartě <strong>Vlastní katalogy</strong> si poskládáš až dvacet seznamů na domovskou stránku Stremia – ze šablony
+          (Populární, Nejlépe hodnocené, Nové s CZ dabingem, Filmy ve 4K s CZ dabingem, Pohádky s CZ dabingem…) nebo podle žánrů,
+          témat, země původu a let.</p>
+        <p>Režim <strong>Jen tituly se streamem</strong> na pozadí ověřuje, že titul jde přehrát v kvalitě a jazyce, jaký chceš, a ukáže
+          jen ty. Ověřuje se, dokud aplikace běží, takže se katalog plní postupně.
+          Návod: <a href="https://nokturno-app.github.io/nokturno-napoveda/cs/vlastni-katalogy" target="_blank" rel="noopener">Vlastní katalogy</a>.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Jak fungují Koncerty?</summary>
+      <div class="obsah">
+        <p>V kartě <strong>Koncerty</strong> zaškrtni hudební žánry a vlož svůj klíč Last.fm (zdarma). Aplikace pak na pozadí hledá
+          záznamy koncertů nejposlouchanějších interpretů těch žánrů a ve Stremiu přibude druh <strong>Koncerty</strong>.
+          Návod: <a href="https://nokturno-app.github.io/nokturno-napoveda/cs/koncerty" target="_blank" rel="noopener">Koncerty</a>.</p>
       </div>
     </details>
 
@@ -899,7 +914,7 @@
           <li><strong>Sledujteto</strong> – česká úschovna s velkým výběrem, hledá přes tvůj účet a přehrává s Premium.</li>
           <li><strong>FastShare</strong> – česká úschovna s velkým výběrem, hledá i bez účtu, přehrává z kreditu nebo s neomezeným stahováním. Jen v aplikaci Stremio, ne v prohlížeči.</li>
           <li><strong>HellSpy</strong> – veřejné soubory zdarma, bez účtu. Méně výběru, ale nic nestojí.</li>
-          <li><strong>Přehraj.to</strong> – česká úschovna, ve Stremiu potřebuje účet (server je jedna IP, bez přihlášení by ho Přehraj.to omezil). S Premium hraje původní soubor, jinak překódovanou verzi. Hraje i v prohlížeči.</li>
+          <li><strong>Přehraj.to</strong> – česká úschovna, ve Stremiu potřebuje účet. S Premium hraje původní soubor, jinak překódovanou verzi. Hraje i v prohlížeči.</li>
           <li><strong>CZtor</strong> – placený katalog s plnou kvalitou, páruje se PINem na cztor.com (heslo nezadáváš). Hraje i v prohlížeči.</li>
         </ul>
       </div>

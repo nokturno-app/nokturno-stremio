@@ -62,7 +62,13 @@
 const ADRESA = "__ADRESA__";
 const $ = (id) => document.getElementById(id);
 $("adresa").textContent = ADRESA;
-const otevri = (schema) => () => { location.href = ADRESA.replace(/^https?:\/\//, schema); };
+// Stremio i Nuvio si z `stremio://`/`nuvio://` udělají https; adresa na http (instance bez HTTPS)
+// by skončila „Failed to fetch“. Výjimka: http z 127.0.0.1 bere Stremio na počítači.
+const jenHttp = (a) => /^http:\/\//.test(a) && !(!/Android/i.test(navigator.userAgent) && /^http:\/\/(127\.0\.0\.1|localhost)[:\/]/.test(a));
+const otevri = (schema) => () => {
+  if (jenHttp(ADRESA)) { $("kopirovat").click(); return; }
+  location.href = ADRESA.replace(/^https?:\/\//, schema);
+};
 $("stremio").addEventListener("click", otevri("stremio://"));
 $("nuvio").addEventListener("click", otevri("nuvio://"));
 // Přes HTTP prohlížeč Clipboard API nedá – záloha přes execCommand.

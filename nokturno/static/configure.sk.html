@@ -891,6 +891,9 @@
 const ZAKLAD = "__ZAKLAD__";
 // Na počítači Stremio bere http z 127.0.0.1; HTTPS přes local-ip.co selže, když DNS blokuje rebinding. Android potřebuje HTTPS.
 const ZAKLAD_DOPLNKU = (!/Android/i.test(navigator.userAgent) && /^http:\/\/(127\.0\.0\.1|localhost)[:\/]/.test(ZAKLAD)) ? ZAKLAD : "__ZAKLAD_DOPLNKU__";
+// Stremio i Nuvio si z `stremio://`/`nuvio://` udělají https; adresa na http (instance bez HTTPS)
+// by skončila „Failed to fetch“. Výjimka: http z 127.0.0.1 bere Stremio na počítači.
+const jenHttp = (a) => /^http:\/\//.test(a) && !(!/Android/i.test(navigator.userAgent) && /^http:\/\/(127\.0\.0\.1|localhost)[:\/]/.test(a));
 const form = document.getElementById("form");
 const $ = (id) => document.getElementById(id);
 // Adresa doplnku cez local-ip.co sa musí z tohto zariadenia preložiť. Router s ochranou DNS rebinding (alebo Pi-hole)
@@ -1586,6 +1589,7 @@ $("instalovat").addEventListener("click", async () => {
   const chyba = problem();
   if (chyba) { tabProChybu(chyba); nastavStav(chyba, true); return; }
   if (!(await zajistiProfil())) return;
+  if (jenHttp(adresa())) { $("kopirovat").click(); return; }
   nastavStav("Otváram Stremio… Keď sa nič nestane, použi Skopírovať adresu.");
   window.location.href = adresa().replace(/^https?:\/\//, "stremio://");
 });
@@ -1596,6 +1600,7 @@ $("nuvio").addEventListener("click", async () => {
   const chyba = problem();
   if (chyba) { tabProChybu(chyba); nastavStav(chyba, true); return; }
   if (!(await zajistiProfil())) return;
+  if (jenHttp(adresa())) { $("kopirovat").click(); return; }
   nastavStav("Otváram Nuvio… Keď sa nič nestane, použi Skopírovať adresu.");
   window.location.href = adresa().replace(/^https?:\/\//, "nuvio://");
 });

@@ -3396,40 +3396,33 @@ class TestSpravce(unittest.TestCase):
         self.r.spravce = spravce.Spravce(self.tmp.name)
         self.hl = {"X-Nokturno": "1"}
 
-    def _post(self, cesta, data, hlavicky=None, doma=False):
-        return self.r.post(cesta, json.dumps(data), {**self.hl, **(hlavicky or {})}, zaklad="https://x.cz", doma=doma)
+    def _post(self, cesta, data, hlavicky=None):
+        return self.r.post(cesta, json.dumps(data), {**self.hl, **(hlavicky or {})}, zaklad="https://x.cz")
 
     def _cookie(self, odp):
         return dict(odp.hlavicky)["Set-Cookie"].split(";")[0]
 
     def test_bez_spravce_nejde_profil_ani_sprava(self):
-        self.assertTrue(self.r.spravce.kod)
         self.assertEqual(self._post("/profil", {"nastaveni": KOUSEK}).status, 403)
         self.assertEqual(self._post("/aplikace", {"stats": False}).status, 403)
-        html = self.r.route("/configure", ZAKLAD, doma=False).html.replace(" ", "")
+        html = self.r.route("/configure", ZAKLAD).html.replace(" ", "")
         self.assertIn('"spravce_nastaven":false', html)
-        self.assertIn('"kod_potreba":true', html)
         self.assertIn('"sprava":false', html)
 
-    def test_nastaveni_mimo_domov_chce_kod(self):
+    def test_nastaveni_bez_kodu(self):
         from nokturno import spravce, soukroma
-        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "tajne123", "kod": "XXXX-XXXX"}).status, 403)
-        odp = self._post("/spravce/nastavit", {"heslo": "tajne123", "kod": self.r.spravce.kod.lower()})
+        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "kratk"}).status, 400)
+        odp = self._post("/spravce/nastavit", {"heslo": "tajne123"})
         self.assertEqual(odp.status, 200)
         self.assertIn("HttpOnly", dict(odp.hlavicky)["Set-Cookie"])
         self.assertIn("Secure", dict(odp.hlavicky)["Set-Cookie"])
         self.assertTrue(soukroma.nacti_aplikaci(self.tmp.name)["spravce"].startswith("pbkdf2$"))
-        self.assertEqual(self.r.spravce.kod, "")
         # druhé nastavení už nejde, po restartu se heslo načte
-        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "jine1234"}, doma=True).status, 400)
+        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "jine1234"}).status, 400)
         self.assertTrue(spravce.Spravce(self.tmp.name).nastaveno)
 
-    def test_doma_bez_kodu_a_kratke_heslo(self):
-        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "kratk"}, doma=True).status, 400)
-        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "tajne123"}, doma=True).status, 200)
-
     def test_spravce_vidi_vse_kamarad_jen_sve(self):
-        self._post("/spravce/nastavit", {"heslo": "tajne123"}, doma=True)
+        self._post("/spravce/nastavit", {"heslo": "tajne123"})
         kamarad = self._post("/profil", {"nastaveni": KOUSEK}).data["klic"]
         cizi = self._post("/profil", {"nastaveni": KOUSEK}).data["klic"]
         self.assertEqual([p["klic"] for p in self._post("/profily", {"klice": [kamarad]}).data["profily"]], [kamarad])
@@ -3446,11 +3439,3 @@ class TestSpravce(unittest.TestCase):
         self.assertEqual(self._post("/aplikace", {"stats": True}, sprava).status, 403)
         self.assertEqual(self._post("/aplikace", {"stats": True}, {"Cookie": nova}).status, 200)
 
-    def test_doma_pozna_jen_mistni_adresu_bez_proxy(self):
-        from nokturno.spravce import bez_kodu
-        self.assertTrue(bez_kodu("127.0.0.1", {}))
-        self.assertTrue(bez_kodu("192.168.1.5", {}))
-        self.assertTrue(bez_kodu("::ffff:10.0.0.2", {}))
-        self.assertFalse(bez_kodu("8.8.8.8", {}))
-        self.assertFalse(bez_kodu("127.0.0.1", {"X-Forwarded-For": "8.8.8.8"}))
-        self.assertFalse(bez_kodu("127.0.0.1", {"Cf-Connecting-IP": "8.8.8.8"}))

@@ -304,9 +304,6 @@
         <span class="heslo"><input type="password" id="spravce-heslo" autocomplete="new-password" spellcheck="false"></span></label>
       <label class="pole"><span>Heslo znovu</span>
         <span class="heslo"><input type="password" id="spravce-heslo2" autocomplete="new-password" spellcheck="false"></span></label>
-      <label class="pole" id="spravce-kod-pole" hidden><span>Kód z výpisu aplikace</span>
-        <input type="text" id="spravce-kod" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH">
-        <small>Aplikace ho vypsala při startu do logu (okno aplikace, journalctl, docker logs). Na stejném počítači nebo v domácí síti ho stránka nechce.</small></label>
       <button type="button" class="hlavni" id="spravce-nastavit-btn">Nastavit heslo správce</button>
       <p class="vysledek chyba" id="spravce-chyba" hidden></p>
     </div>
@@ -1687,14 +1684,13 @@ if (!APLIKACE.spravce_nastaven) {
   document.body.classList.add("nastaveni-spravce");
   $("spravce").hidden = false;
   $("spravce-nastavit").hidden = false;
-  $("spravce-kod-pole").hidden = !APLIKACE.kod_potreba;
   const ukaz = (text) => { $("spravce-chyba").textContent = text; $("spravce-chyba").hidden = false; };
   $("spravce-nastavit-btn").addEventListener("click", async () => {
     const heslo = $("spravce-heslo").value;
     if (heslo.length < 6) return ukaz("Heslo musí mít aspoň 6 znaků.");
     if (heslo !== $("spravce-heslo2").value) return ukaz("Hesla se neshodují.");
-    try { await spravcePost("/spravce/nastavit", { heslo, kod: $("spravce-kod").value }); location.reload(); }
-    catch (e) { ukaz(e === 403 ? "Kód nesedí nebo je pokusů moc. Kód najdeš ve výpisu aplikace z posledního startu." : "Nepodařilo se – zkus to znovu."); }
+    try { await spravcePost("/spravce/nastavit", { heslo }); location.reload(); }
+    catch (e) { ukaz(e === 403 ? "Příliš mnoho pokusů, zkus to za 10 minut." : "Nepodařilo se – zkus to znovu."); }
   });
 } else if (!APLIKACE.sprava) {
   $("spravce").hidden = false;

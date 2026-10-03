@@ -71,7 +71,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "9.12.0"
+VERZE = "9.12.1"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián
@@ -511,7 +511,7 @@ class Router:
         if "heslo" in volby:
             self.heslo = str(volby["heslo"] or "")
 
-    def post(self, cesta, telo, headers, zaklad="", doma=True):
+    def post(self, cesta, telo, headers, zaklad=""):
         """POST jen z formuláře mimo proxy. Vlastní hlavička `X-Nokturno` vynutí u cizího webu
         preflight, který neprojde (CORS tu není), takže jiná stránka v prohlížeči majitele
         nastavení nezmění."""
@@ -523,7 +523,7 @@ class Router:
         z_proxy = soukroma.z_proxy(headers)
         sprava = self.sprava(headers, z_proxy)
         if cesta.startswith("/spravce/"):
-            return self._spravce_post(cesta, telo, zaklad, doma, sprava)
+            return self._spravce_post(cesta, telo, zaklad)
         if cesta in self.SPRAVA:
             if not sprava:
                 return Odpoved(status=403, text="")
@@ -610,8 +610,8 @@ class Router:
             return Odpoved(data=self.aplikace(), hlavicky=hlavicky)
         return chyba(404, "Nic tu není.")
 
-    def _spravce_post(self, cesta, telo, zaklad, doma, sprava):
-        """`/spravce/nastavit` (první heslo, mimo domov s kódem z logu), `/prihlasit`, `/odhlasit`."""
+    def _spravce_post(self, cesta, telo, zaklad):
+        """`/spravce/nastavit` (první heslo), `/prihlasit`, `/odhlasit`."""
         if self.spravce is None:
             return chyba(404, "Nic tu není.")
         https = zaklad.startswith("https")
@@ -623,9 +623,9 @@ class Router:
         except (ValueError, TypeError, AttributeError):
             return chyba(400, "Nečitelný požadavek.")
         if cesta == "/spravce/nastavit":
-            vadne = self.spravce.nastav(heslo, data.get("kod"), doma)
+            vadne = self.spravce.nastav(heslo)
             if vadne:
-                return chyba(403 if "Kód" in vadne or "pokus" in vadne else 400, vadne)
+                return chyba(403 if "pokus" in vadne else 400, vadne)
         elif cesta == "/spravce/prihlasit":
             if not self.spravce.prihlas(heslo):
                 return chyba(403, "Heslo nesedí.")
@@ -689,7 +689,7 @@ class Router:
                 pass
         return (STATIKA / f"{jmeno}.html").read_text(encoding="utf-8")
 
-    def configure(self, kousek, zaklad, verejny=False, jazyk="cs", klient="", z_proxy=False, sprava=None, doma=True):
+    def configure(self, kousek, zaklad, verejny=False, jazyk="cs", klient="", z_proxy=False, sprava=None):
         """Formulář, který vyrobí adresu s účty. Předvyplní se z adresy, na které stojí."""
         try:
             html = self._stranka("configure", jazyk)
@@ -711,7 +711,7 @@ class Router:
         html = html.replace("__ID__", self._identita_pro_formular(soucasne, klient))
         html = html.replace("__APLIKACE__", mapping.json_do_scriptu({**self.aplikace(), "sprava": (not z_proxy) if sprava is None else sprava,
                                                                 "spravce_nastaven": self.spravce is None or self.spravce.nastaveno,
-                                                                "kod_potreba": not doma, "profily": (not z_proxy or self.sdilena) and not self.profily_vypnute, "stary": self.profily_vypnute}))
+                                                                "profily": (not z_proxy or self.sdilena) and not self.profily_vypnute, "stary": self.profily_vypnute}))
         return Odpoved(html=html)
 
     def instalace(self, kousek, zaklad, jazyk):
@@ -1026,7 +1026,7 @@ class Router:
 
     # --- rozcestník -------------------------------------------------------
     def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False,
-              sprava=None, doma=True, hlavicky=None):
+              sprava=None, hlavicky=None):
         """Cesta požadavku na odpověď. `zaklad` je absolutní adresa služby,
         `verejny` říká, že přišel z internetu (viz docstring modulu), `jazyk`
         je jazyk stránek z `Accept-Language` (viz `jazyk_z_hlavicky`), `klient`
@@ -1098,7 +1098,7 @@ class Router:
             if zbytek in ("/configure", "/configure/"):
                 if sprava is None:
                     sprava = self.sprava(hlavicky or {}, z_proxy)
-                return self.configure(kousek, zaklad, verejny, jazyk, klient, z_proxy, sprava=sprava, doma=doma)
+                return self.configure(kousek, zaklad, verejny, jazyk, klient, z_proxy, sprava=sprava)
             return self.uvod(zaklad, jazyk)
 
         if kousek and zbytek == "/instalace":

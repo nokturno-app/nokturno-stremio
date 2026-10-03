@@ -5,20 +5,15 @@ z internetu), ale podle hesla správce. To je v `aplikace.json` jako hash (`spra
 viz `soukroma.hash_hesla`). Po přihlášení dostane prohlížeč cookie s tokenem odvozeným
 z hashe – po změně hesla tím přestanou platit všechna dřívější přihlášení.
 
-Dokud heslo správce není, `/configure` ukáže jen jeho nastavení. Kdo by stránku otevřel
-dřív než majitel, mohl by si správce udělat sám. Proto mimo domácí síť chce nastavení
-ještě jednorázový kód, který aplikace při startu vypíše do logu (konzole, `journalctl`).
-Doma (adresa z místní sítě, bez hlaviček proxy) kód není potřeba – APK a aplikace na
-počítači log nemají kde ukázat.
+Dokud heslo správce není, `/configure` ukáže jen jeho nastavení. Kdo stránku otevře
+první, stane se správcem – na veřejné adrese ji proto majitel má otevřít hned po instalaci.
 
 Zapomenuté heslo: z `aplikace.json` v datové složce smazat položku `spravce` a aplikaci
 restartovat.
 """
 import hashlib
 import hmac
-import ipaddress
 import logging
-import secrets
 import threading
 import time
 
@@ -27,25 +22,8 @@ from . import soukroma
 _LOGGER = logging.getLogger(__name__)
 
 COOKIE = "nokturno_spravce"
-# hlavičky, které přidává proxy – s nimi adresa klienta neříká, odkud požadavek přišel
-HLAVICKY_PROXY = ("X-Forwarded-For", "X-Real-IP", "Forwarded", "Cf-Connecting-IP", "X-Forwarded-Host",
-                  "Tailscale-Funnel-Request")
-ABECEDA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-MAX_CHYB = 20            # špatných hesel a kódů za OKNO_CHYB – pak se odmítá všechno
+MAX_CHYB = 20            # špatných hesel za OKNO_CHYB – pak se odmítá všechno
 OKNO_CHYB = 10 * 60
-
-
-def bez_kodu(client_ip, headers):
-    """Požadavek z domácí sítě nebo z téhož počítače bez proxy – tam kód není potřeba."""
-    if any(headers.get(h) for h in HLAVICKY_PROXY):
-        return False
-    try:
-        ip = ipaddress.ip_address(str(client_ip).split("%")[0])
-    except ValueError:
-        return False
-    if ip.version == 6 and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    return ip.is_loopback or ip.is_private
 
 
 def _cookie(headers):
@@ -60,8 +38,6 @@ class Spravce:
     def __init__(self, data_dir):
         self.data_dir = data_dir
         self.hash = str(soukroma.nacti_aplikaci(data_dir).get("spravce") or "")
-        self.kod = "" if self.hash else "-".join(
-            "".join(secrets.choice(ABECEDA) for _ in range(4)) for _ in range(2))
         self._chyby = []
         self._zamek = threading.Lock()
 
@@ -91,17 +67,13 @@ class Spravce:
         self._chyby.append(time.time())
         time.sleep(1)   # ponytail: zdržení na pokus, ne per-IP limit; stačí na hádání z prohlížeče
 
-    def nastav(self, heslo, kod, doma):
+    def nastav(self, heslo):
         """První nastavení. Vrátí None = hotovo, jinak text chyby."""
         with self._zamek:
             if self.hash:
                 return "Správce už je nastavený, přihlas se."
             if self._omezeno():
                 return "Příliš mnoho pokusů, zkus to za 10 minut."
-            if not doma and not hmac.compare_digest(str(kod or "").upper().replace("-", "").replace(" ", ""),
-                                                    self.kod.replace("-", "")):
-                self._chyba()
-                return "Kód nesedí. Najdeš ho ve výpisu (logu) aplikace z posledního startu."
             if len(heslo or "") < 6:
                 return "Heslo musí mít aspoň 6 znaků."
             self._uloz(heslo)
@@ -126,5 +98,4 @@ class Spravce:
 
     def _uloz(self, heslo):
         self.hash = soukroma.hash_hesla(heslo)
-        self.kod = ""
         soukroma.uloz_aplikaci(self.data_dir, {"spravce": self.hash})

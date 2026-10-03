@@ -304,9 +304,6 @@
         <span class="heslo"><input type="password" id="spravce-heslo" autocomplete="new-password" spellcheck="false"></span></label>
       <label class="pole"><span>Heslo znova</span>
         <span class="heslo"><input type="password" id="spravce-heslo2" autocomplete="new-password" spellcheck="false"></span></label>
-      <label class="pole" id="spravce-kod-pole" hidden><span>Kód z výpisu aplikácie</span>
-        <input type="text" id="spravce-kod" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH">
-        <small>Aplikácia ho vypísala pri štarte do logu (okno aplikácie, journalctl, docker logs). Na rovnakom počítači alebo v domácej sieti ho stránka nechce.</small></label>
       <button type="button" class="hlavni" id="spravce-nastavit-btn">Nastaviť heslo správcu</button>
       <p class="vysledek chyba" id="spravce-chyba" hidden></p>
     </div>
@@ -1687,14 +1684,13 @@ if (!APLIKACE.spravce_nastaven) {
   document.body.classList.add("nastaveni-spravce");
   $("spravce").hidden = false;
   $("spravce-nastavit").hidden = false;
-  $("spravce-kod-pole").hidden = !APLIKACE.kod_potreba;
   const ukaz = (text) => { $("spravce-chyba").textContent = text; $("spravce-chyba").hidden = false; };
   $("spravce-nastavit-btn").addEventListener("click", async () => {
     const heslo = $("spravce-heslo").value;
     if (heslo.length < 6) return ukaz("Heslo musí mať aspoň 6 znakov.");
     if (heslo !== $("spravce-heslo2").value) return ukaz("Heslá sa nezhodujú.");
-    try { await spravcePost("/spravce/nastavit", { heslo, kod: $("spravce-kod").value }); location.reload(); }
-    catch (e) { ukaz(e === 403 ? "Kód nesedí alebo je pokusov priveľa. Kód nájdeš vo výpise aplikácie z posledného štartu." : "Nepodarilo sa – skús to znova."); }
+    try { await spravcePost("/spravce/nastavit", { heslo }); location.reload(); }
+    catch (e) { ukaz(e === 403 ? "Príliš veľa pokusov, skús to o 10 minút." : "Nepodarilo sa – skús to znova."); }
   });
 } else if (!APLIKACE.sprava) {
   $("spravce").hidden = false;

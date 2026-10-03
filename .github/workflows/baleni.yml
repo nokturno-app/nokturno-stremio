@@ -29,7 +29,7 @@ jobs:
           docker run --rm --platform ${{ matrix.docker }} -v "$PWD":/src -w /src python:3.12-bookworm bash -c \
             "pip install -q pyinstaller certifi && bash baleni/sestav.sh ${{ matrix.plat }} && chown -R $(id -u):$(id -g) dist build"
       - uses: actions/upload-artifact@v4
-        with: { name: "${{ matrix.plat }}", path: dist/* }
+        with: { name: "${{ matrix.plat }}", path: dist/*, retention-days: 1 }
 
   desktop:
     strategy:
@@ -50,7 +50,7 @@ jobs:
       - run: bash baleni/sestav.sh ${{ matrix.plat }}
         shell: bash
       - uses: actions/upload-artifact@v4
-        with: { name: "${{ matrix.plat }}", path: dist/* }
+        with: { name: "${{ matrix.plat }}", path: dist/*, retention-days: 1 }
 
   apk:
     runs-on: ubuntu-latest
@@ -74,7 +74,7 @@ jobs:
           V=$(grep -oP '^VERZE = "\K[^"]+' nokturno/routes.py)
           mkdir -p dist && cp baleni/android/app/build/outputs/apk/release/*.apk "dist/nokturno-$V.apk"
       - uses: actions/upload-artifact@v4
-        with: { name: apk, path: dist/*.apk }
+        with: { name: apk, path: dist/*.apk, retention-days: 1 }
 
   vydani:
     if: startsWith(github.ref, 'refs/tags/v')

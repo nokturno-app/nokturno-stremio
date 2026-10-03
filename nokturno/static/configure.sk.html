@@ -893,6 +893,7 @@ const $ = (id) => document.getElementById(id);
 // --- předvyplnění: z adresy, na které formulář stojí (Konfigurovat ve Stremiu) ---
 const soucasne = __NASTAVENI__;
 // profil: nastavení je uložené v aplikaci pod klíčem a adresa doplňku nese jen ten klíč
+const STARY = (__APLIKACE__).stary === true;   // NOKTURNO_PROFILY=0: adresa nese celé nastavení, profily se nezakládají
 let profil = "__PROFIL__";            // prázdný = nastavení ještě není uložené v aplikaci
 let ulozeno = profil ? "?" : null;    // kousek posledně uloženého nastavení (doplní se líně, viz zmeneno)
 form.elements["hide_lowq"].checked = true;   // výchozí zapnuto; stará adresa bez volby ji nesmí odškrtnout
@@ -1074,7 +1075,7 @@ function zakoduj(objekt) {
   return btoa(binarne).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 const kousek = () => zakoduj(nastaveni());
-const adresa = () => profil ? ZAKLAD_DOPLNKU + "/c/" + profil + "/manifest.json" : "";
+const adresa = () => STARY ? ZAKLAD_DOPLNKU + "/c/" + kousek() + "/manifest.json" : profil ? ZAKLAD_DOPLNKU + "/c/" + profil + "/manifest.json" : "";
 const zmeneno = () => { if (ulozeno === "?") ulozeno = kousek(); return ulozeno !== kousek(); };
 
 // --- souhrn a kontrola úplnosti ---
@@ -1161,7 +1162,7 @@ function prekresli() {
   // narazili v TDZ, preto sa stav číta priamo z DOM, nie cez premennú.
   const ma_suhlas = document.getElementById("souhlas-podminky")?.checked;
   $("adresa").textContent = ma_suhlas ? (adresa() || "Adresa vznikne pri prvom uložení (Pridať do Stremia, Nuvia, QR alebo Skopírovať).") : "";
-  $("ulozit").hidden = !(profil && zmeneno());
+  $("ulozit").hidden = STARY || !(profil && zmeneno());
   $("novy-profil").hidden = !profil;
   const v = vyplnene(nastaveni());
   for (const k in v) $("tab-" + k).querySelector(".tecka").hidden = !v[k];
@@ -1539,6 +1540,7 @@ async function ulozProfil(prevod = false) {
 }
 // uložit, pokud je co (nové nastavení nebo změna); true = adresa je aktuální
 async function zajistiProfil() {
+  if (STARY) return true;
   if (profil && !zmeneno()) return true;
   try { await ulozProfil(); return true; }
   catch { nastavStav("Nastavenie sa nepodarilo uložiť do aplikácie – skús to znova.", true); return false; }
@@ -1710,9 +1712,10 @@ $("profily-vse").addEventListener("click", (e) => { e.preventDefault(); location
 const VYBER = APLIKACE.profily && !profil && !Object.keys(soucasne).length;
 if (VYBER) document.body.classList.add("vyber-profilu");   // hned, ať formulář neproblikne
 nactiProfily();
+if (STARY) $("qr").hidden = true;
 
 // stará adresa s nastavením v sobě (do 9.5.x): rovnou uložit jako profil a přepnout na krátkou adresu
-if (!profil && /\/c\/eyJ/.test(location.pathname) && Object.keys(soucasne).length > 0 && !problem()) {
+if (!STARY && !profil && /\/c\/eyJ/.test(location.pathname) && Object.keys(soucasne).length > 0 && !problem()) {
   ulozProfil(true).then(() => nastavStav("Nastavenie je teraz uložené v aplikácii a adresa doplnku je kratšia, bez hesiel. Pridaj doplnok do aplikácie ešte raz tlačidlom dole a ten starý odober – potom ho pri zmenách pridávať nemusíš.")).catch(() => {});
 }
 </script>

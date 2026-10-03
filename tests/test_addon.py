@@ -370,7 +370,7 @@ class TestPrevod(unittest.TestCase):
 
     def test_nahravka_z_kina_ma_znacku_cam(self):
         objekt = mapping.stream_object({**POPIS, "lowq": True}, lambda u: u)
-        self.assertEqual(objekt["name"], "🎥 CAM\nFull HD")
+        self.assertEqual(objekt["name"], "Full HD 🎥 CAM")
 
     def test_kodek_obrazu_v_popisu(self):
         objekt = mapping.stream_object({**POPIS, "vcodec": "HEVC"}, lambda u: u)
@@ -1059,10 +1059,10 @@ class TestVlastniUloziste(unittest.TestCase):
         adresa = f"http://127.0.0.1:{up.server_address[1]}/a.mkv"
 
         class Smerovac:
-            heslo = "Basic x"
+            hlavicka = "Basic x"   # ne `heslo` – to je atribut Routeru (NOKTURNO_HESLO)
 
             def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False):
-                return Odpoved(proxy=(adresa, {"Authorization": self.heslo}))
+                return Odpoved(proxy=(adresa, {"Authorization": self.hlavicka}))
         srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         srv.router = Smerovac()
         threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -1073,7 +1073,7 @@ class TestVlastniUloziste(unittest.TestCase):
                 self.assertEqual(resp.status, 206)
                 self.assertEqual(resp.headers["Content-Range"], f"bytes 10-19/{len(DATA)}")
                 self.assertEqual(resp.read(), DATA[10:20])
-            srv.router.heslo = "Basic spatne"
+            srv.router.hlavicka = "Basic spatne"
             with self.assertRaises(urllib.error.HTTPError) as err:
                 urllib.request.urlopen(req, timeout=5)
             self.assertEqual(err.exception.code, 502, "odmítnuté heslo = srozumitelná chyba, ne 401")
@@ -1274,7 +1274,7 @@ class TestSlovencina(unittest.TestCase):
     def test_adresa_doplnku_nenese_jazyk(self):
         for jazyk in ("cs", "sk"):
             html = self.html(f"/configure?lang={jazyk}")
-            self.assertIn('const adresa = () => profil ? ZAKLAD_DOPLNKU + "/c/" + profil + "/manifest.json" : "";', html)
+            self.assertIn('ZAKLAD_DOPLNKU + "/c/" + profil + "/manifest.json" : "";', html)
             self.assertIn(f'const ZAKLAD = "{ZAKLAD}";', html)
 
     def test_manifest_zustava_cesky_a_lang_ho_nerozbije(self):
@@ -3315,6 +3315,35 @@ class TestProfily(unittest.TestCase):
         self.assertEqual(self.r.post("/profil/jmeno", json.dumps({"klic": klic, "jmeno": "Kamarád"}), cf).status, 200)
         self.assertEqual(self.r.post("/povolit", KOUSEK, cf).status, 403)
         self.assertEqual(self.r.route("/aktualizace", ZAKLAD, z_proxy=True).status, 403)
+
+    def test_vypnute_profily_stary_rezim(self):
+        klic = self._uloz().data["klic"]
+        self.r.profily_vypnute = True
+        self.assertEqual(self._uloz().status, 404)
+        html = self.r.route("/configure", ZAKLAD).html
+        self.assertIn('"stary": true', html)
+        self.assertIn('"profily": false', html)
+        # už uložený profil se dál čte
+        self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 200)
+
+    def test_heslo_k_formulari(self):
+        import base64
+        from nokturno import server
+        r = self.r
+        zadne = lambda c: server.potrebuje_heslo(c, r)
+        self.assertFalse(zadne("/configure"))   # bez hesla nic nevyžaduje
+        r.heslo = "tajne"
+        self.assertTrue(zadne("/configure"))
+        self.assertTrue(zadne("/profil"))
+        self.assertTrue(zadne("/c/pXXXX/configure"))
+        self.assertFalse(zadne("/c/pXXXX/manifest.json"))
+        self.assertFalse(zadne("/stream/movie/tt1.json"))
+        self.assertFalse(zadne("/"))
+        hlavicka = lambda h: "Basic " + base64.b64encode(h.encode()).decode()
+        self.assertTrue(server.heslo_sedi(hlavicka("x:tajne"), "tajne"))
+        self.assertFalse(server.heslo_sedi(hlavicka("x:spatne"), "tajne"))
+        self.assertFalse(server.heslo_sedi(None, "tajne"))
+        self.assertFalse(server.heslo_sedi("Basic ???", "tajne"))
 
     def test_qr_svg(self):
         from nokturno import profily

@@ -430,6 +430,8 @@ class Router:
     # sdílená instance (`"sdilena": true`): z internetu i formulář a uložení profilu, pro kamarády;
     # včetně výběru, přejmenování a mazání profilů; povolování a aktualizace dál jen mimo proxy
     sdilena = False
+    profily_vypnute = False   # NOKTURNO_PROFILY=0: starý režim, adresa nese celé nastavení
+    heslo = ""                # NOKTURNO_HESLO: heslo k formuláři a profilům (viz server.potrebuje_heslo)
     FORMULAR = ("/configure", "/configure/", "/check")
     PROFILY_CESTY = ("/profil", "/profily", "/profil/jmeno", "/profil/smazat")
 
@@ -499,6 +501,8 @@ class Router:
         preflight, který neprojde (CORS tu není), takže jiná stránka v prohlížeči majitele
         nastavení nezmění."""
         cesta = cesta.partition("?")[0]
+        if self.profily_vypnute and cesta in self.PROFILY_CESTY:
+            return chyba(404, "Profily jsou vypnuté.")
         if not headers.get("X-Nokturno") or (soukroma.z_proxy(headers) and not (self.sdilena and cesta in self.PROFILY_CESTY)):
             return Odpoved(status=403, text="")
         if cesta == "/povolit":
@@ -638,7 +642,7 @@ class Router:
         html = html.replace("__PROFIL__", kousek if profily.je_klic(kousek or "") and soucasne is not None else "")
         html = html.replace("__VERZE__", self.verze)
         html = html.replace("__ID__", self._identita_pro_formular(soucasne, klient))
-        html = html.replace("__APLIKACE__", mapping.json_do_scriptu({**self.aplikace(), "sprava": not z_proxy, "profily": not z_proxy or self.sdilena}))
+        html = html.replace("__APLIKACE__", mapping.json_do_scriptu({**self.aplikace(), "sprava": not z_proxy, "profily": (not z_proxy or self.sdilena) and not self.profily_vypnute, "stary": self.profily_vypnute}))
         return Odpoved(html=html)
 
     def instalace(self, kousek, zaklad, jazyk):

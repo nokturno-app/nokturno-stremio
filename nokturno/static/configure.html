@@ -284,12 +284,12 @@
 
   <div class="vystraha" id="dns-pozn" role="alert" hidden>
     <strong>Adresa doplňku se z tohoto zařízení nedá otevřít.</strong>
-    Doplněk běží pod adresou typu <code>192-168-1-10.my.local-ip.co</code>, která se má přeložit na adresu zařízení
-    v tvé síti. Router nebo DNS filtr (např. Pi-hole) ji často zahodí jako ochranu proti „DNS rebinding“ a Stremio pak
-    hlásí <em>Failed to fetch</em> nebo se točí kolečko. V nastavení routeru najdi „DNS rebind protection“ a přidej výjimku
-    pro <code>my.local-ip.co</code> (u dnsmasq a Pi-hole řádek <code>rebind-domain-ok=/my.local-ip.co/</code>), nebo na tomhle
-    zařízení nastav v síti DNS <code>1.1.1.1</code>. Na počítači, kde aplikace běží, jde nastavení otevřít i přes
-    <code id="dns-lokalni">http://127.0.0.1:7140/configure</code> – tam se DNS nepoužívá.
+    Adresa typu <code>192-168-1-10.my.local-ip.co</code> (nebo <code>127-0-0-1.my.local-ip.co</code>) se má přeložit na adresu zařízení s aplikací. DNS ji zahodilo jako ochranu proti „DNS rebinding“ a Stremio nebo Nuvio pak hlásí <em>Failed to fetch</em> nebo <em>Unable to resolve host</em>.
+    <ul style="margin:.4rem 0 0;padding-left:1.2rem">
+      <li><b>Android:</b> Nastavení → Připojení → Další nastavení připojení → Soukromé DNS → Název hostitele poskytovatele soukromého DNS: <code>one.one.one.one</code> (nebo Soukromé DNS vypni, když je tam filtr reklam).</li>
+      <li><b>Router nebo Pi-hole:</b> v „DNS rebind protection“ přidej výjimku pro <code>my.local-ip.co</code> (u dnsmasq a Pi-hole řádek <code>rebind-domain-ok=/my.local-ip.co/</code>).</li>
+      <li id="dns-pc"><b>Počítač:</b> na počítači, kde aplikace běží, otevři nastavení přes <code id="dns-lokalni">http://127.0.0.1:7140/configure</code> – Stremio na počítači pak DNS nepotřebuje.</li>
+    </ul>
   </div>
 
   <ul class="kroky">
@@ -971,6 +971,7 @@ const $ = (id) => document.getElementById(id);
   } catch (e) {
     $("dns-lokalni").textContent = "http://127.0.0.1:" + (location.port || "7140") + "/configure";
     $("dns-pozn").hidden = false;
+    if (/Android/i.test(navigator.userAgent)) $("dns-pc").hidden = true;
   } finally { clearTimeout(casovac); }
 })();
 

@@ -46,6 +46,8 @@
   pre { margin: 0; padding: .6rem .75rem; background: var(--pole); border: 1px solid var(--okraj); border-radius: 8px;
         font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .74rem; white-space: pre-wrap; word-break: break-all; color: var(--tlumene); }
   p { margin: 0; font-size: .82rem; color: var(--tlumene); }
+  p.chyba { color: var(--chyba); }
+  p.chyba a { color: var(--odkaz); }
 </style>
 </head>
 <body>
@@ -56,6 +58,7 @@
   <button type="button" id="kopirovat">Zkopírovat adresu</button>
   <div id="stav"></div>
   <pre id="adresa"></pre>
+  <p id="dns-pozn" class="chyba" hidden>Tohle zařízení adresu doplňku nepřeloží (ochrana proti DNS rebinding). V Androidu nastav Soukromé DNS na <code>one.one.one.one</code>, na routeru povol doménu <code>my.local-ip.co</code>. <a href="https://nokturno-app.github.io/nokturno-napoveda/cs/stremio-instalace#caste-problemy">Návod</a></p>
   <p>Mobil musí být ve stejné síti jako počítač s aplikací Nokturno.</p>
 </main>
 <script>
@@ -95,6 +98,17 @@ $("kopirovat").addEventListener("click", async () => {
     $("stav").classList.add("chyba");
   }
 });
+// Adresa přes local-ip.co se musí z tohoto zařízení přeložit (DNS rebinding ji často zahodí).
+(async function () {
+  const zaklad = ADRESA.replace(/\/c\/.*$/, "");
+  if (!/^https:\/\/[^\/]*\.my\.local-ip\.co(:|\/|$)/.test(zaklad)) return;
+  const rizeni = new AbortController(), casovac = setTimeout(() => rizeni.abort(), 4000);
+  try {
+    await fetch(zaklad + "/health", { mode: "no-cors", cache: "no-store", signal: rizeni.signal });
+  } catch (e) {
+    $("dns-pozn").hidden = false;
+  } finally { clearTimeout(casovac); }
+})();
 </script>
 </body>
 </html>

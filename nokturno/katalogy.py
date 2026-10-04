@@ -122,7 +122,7 @@ ZANRY_KONCERTU = {"czech": "Česká scéna", "slovak": "Slovenská scéna", "cze
                   "folk": "Folk", "classical": "Klasika", "reggae": "Reggae", "world": "World"}
 ZANRY_KONCERTU_SK = {"czech": "Česká scéna", "slovak": "Slovenská scéna", "czech rock": "Český rock",
                      "electronic": "Elektronika", "classical": "Klasika"}
-ZDROJE_KONCERTU = {"ws": "WebShare", "hs": "HellSpy", "fs": "FastShare"}
+ZDROJE_KONCERTU = {"dav": "Vlastní úložiště", "ws": "WebShare", "hs": "HellSpy", "fs": "FastShare"}
 STRANKA_DISCOVER = 20
 DISCOVER_STRAN = 10   # víc stránek dashboard nevydá (`DISCOVER_MAX_PAGE`)
 

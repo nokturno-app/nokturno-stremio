@@ -433,9 +433,9 @@ class TestNastaveni(unittest.TestCase):
     def test_klice_sedi_na_to_co_cte_engine(self):
         """Překlep v klíči by se neprojevil chybou, jen tichým ignorováním nastavení."""
         zdroj = (ROOT / "nokturno" / "core" / "engine.py").read_text(encoding="utf-8")
-        # `katalogy` nečte jádro, ale doplněk sám (nokturno/katalogy.py); `lastfm_key` čte `concertcat`/overovani
+        # `katalogy` nečte jádro, ale doplněk sám (nokturno/katalogy.py); `lastfm_key` čte `concertcat`/overovani; `fs_primo` čte routes
         chybi = [k for k in config.PROSTREDI.values()
-                 if f'"{k}"' not in zdroj and k not in ("hs_enabled", "katalogy", "lastfm_key")]
+                 if f'"{k}"' not in zdroj and k not in ("hs_enabled", "katalogy", "lastfm_key", "fs_primo")]
         self.assertEqual(chybi, [], f"engine tyhle klíče nezná: {chybi}")
 
 
@@ -907,6 +907,25 @@ class TestFastshareVeStremiu(unittest.TestCase):
                                        primy=lambda v: (adresa, {"Cookie": "FASTSHARE=H"}))
         self.assertEqual(objekt["url"], "/play/fs:1:data4:10")
         self.assertNotIn("proxyHeaders", objekt["behaviorHints"])
+
+    def test_primo_vyda_adresu_s_hlavickami(self):
+        """Volba `fs_primo`: přímá adresa s `proxyHeaders`, úložiště dál přes `/play/`."""
+        adresa = "https://data4.fastshare.cloud/download.php?id=1"
+        primy = lambda v: (adresa, {"Cookie": "FASTSHARE=H"})
+        objekt = mapping.stream_object({"url": "fs:1:data4:10", "file": "film.mp4"}, lambda v: "/play/" + v,
+                                       primy=primy, primo=("fs:",))
+        self.assertEqual(objekt["url"], adresa)
+        self.assertEqual(objekt["behaviorHints"]["proxyHeaders"], {"request": {"Cookie": "FASTSHARE=H"}})
+        self.assertTrue(objekt["behaviorHints"]["notWebReady"])
+        self.assertNotIn("⚠️", objekt["description"])
+        dav = mapping.stream_object({"url": "dav:1:/a.mkv", "file": "a.mkv"}, lambda v: "/play/" + v,
+                                    primy=primy, primo=("fs:",))
+        self.assertEqual(dav["url"], "/play/dav:1:/a.mkv")
+
+    def test_primo_v_nastaveni(self):
+        self.assertTrue(config.from_mapping({"fs_primo": True})["fs_primo"])
+        self.assertNotIn("fs_primo", config.from_mapping({"fs_primo": False}))
+        self.assertTrue(config.from_environ({"NOKTURNO_FS_PRIMO": "1"})["fs_primo"])
 
     def test_play_fastshare_vrati_proxy(self):
         class Engine:

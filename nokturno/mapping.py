@@ -148,7 +148,7 @@ def titulky(popis, odkaz):
     return out
 
 
-def stream_object(popis, odkaz, primy=None, jazyk="cs"):
+def stream_object(popis, odkaz, primy=None, jazyk="cs", primo=()):
     """Jeden stream z `Engine._describe()` do podoby pro Stremio.
 
     `odkaz(vnitrni_url)` vrátí adresu na tuhle službu — odkazy WebShare platí jen
@@ -157,14 +157,22 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
     `primy(vnitrni_url)` vrátí `(adresa, hlavičky)` u zdrojů z `PRES_HLAVICKY`,
     nebo None, když je teď přehrát nejde (vypršelý účet, nedostatek kreditu) —
     takový stream se nenabídne vůbec, protože bez hlaviček by stejně neodehrál.
+
+    `primo` = schémata z `PRES_HLAVICKY`, která se vydají jako přímá adresa zdroje
+    s `behaviorHints.proxyHeaders` (volba `fs_primo`) — data pak nejdou přes aplikaci.
     """
     vnitrni = popis.get("url") or ""
     if not vnitrni:
         return None
 
     # bez platného účtu (nenastavený, vypršelý, málo kreditu) se stream nenabídne
-    if vnitrni.startswith(PRES_HLAVICKY) and not (primy and primy(vnitrni)):
-        return None
+    hlavicky = None
+    if vnitrni.startswith(PRES_HLAVICKY):
+        prime = primy(vnitrni) if primy else None
+        if not prime:
+            return None
+        if primo and vnitrni.startswith(tuple(primo)):
+            adresa, hlavicky = prime
 
     kvalita = popis.get("quality") or ""
     zdroj = popis.get("source") or ""
@@ -209,7 +217,7 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
     if popis.get("lowq"):
         vlevo = (vlevo + " " if vlevo else "") + "🎥 CAM"
     objekt = {
-        "url": odkaz_streamu(vnitrni, odkaz),
+        "url": adresa if hlavicky else odkaz_streamu(vnitrni, odkaz),
         # bez „Nokturno“ nad kvalitou – v úzkém sloupci jen ubíral místo; doplněk
         # pozná uživatel podle loga, prázdné jméno Stremio neukáže
         "name": vlevo or zdroj or "Nokturno",
@@ -222,8 +230,11 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
         objekt["behaviorHints"]["videoSize"] = velikost
     if nazev_souboru:
         objekt["behaviorHints"]["filename"] = nazev_souboru
-    if nazev_souboru.lower().endswith(NE_PRO_WEB):
+    if nazev_souboru.lower().endswith(NE_PRO_WEB) or hlavicky:
         objekt["behaviorHints"]["notWebReady"] = True
+    if hlavicky:
+        # bez `notWebReady` Stremio `proxyHeaders` ignoruje (viz addon SDK)
+        objekt["behaviorHints"]["proxyHeaders"] = {"request": dict(hlavicky)}
     # aby „další díl“ držel stejný zdroj i kvalitu jako ten, co uživatel pustil
     if kvalita:
         objekt["behaviorHints"]["bingeGroup"] = f"nokturno-{zdroj}-{kvalita}".replace(" ", "-").lower()
@@ -234,11 +245,11 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs"):
     return objekt
 
 
-def streams_response(popisy, odkaz, primy=None, jazyk="cs"):
+def streams_response(popisy, odkaz, primy=None, jazyk="cs", primo=()):
     """Celá odpověď endpointu `/stream/…`."""
     out = []
     for popis in popisy:
-        objekt = stream_object(popis, odkaz, primy=primy, jazyk=jazyk)
+        objekt = stream_object(popis, odkaz, primy=primy, jazyk=jazyk, primo=primo)
         if objekt:
             out.append(objekt)
     return {"streams": out}

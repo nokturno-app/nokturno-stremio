@@ -73,7 +73,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "10.4.1"
+VERZE = "10.4.2"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián
@@ -978,8 +978,9 @@ class Router:
         _LOGGER.info("streamy %s %s: %d", ctype, item_id, len(popisy))
         if self.statistiky is not None:
             self.statistiky.zaznamenej(engine, ctype, item_id, aplikace)
+        primo = ("fs:",) if (getattr(engine, "options", None) or {}).get("fs_primo") else ()
         return Odpoved(data=mapping.streams_response(popisy, self._odkaz(zaklad, kousek),
-                                                      primy=_primy(engine), jazyk=jazyk))
+                                                      primy=_primy(engine), jazyk=jazyk, primo=primo))
 
     def katalog(self, casti, options=None, jazyk="cs"):
         """`/catalog/<typ>/<id>.json` nebo `/catalog/<typ>/<id>/skip=<n>.json` → `{"metas": [...]}`."""

@@ -164,6 +164,7 @@ Hodnoty jsou stejné jako v doplňku pro Kodi, takže se dají opsat z jeho
 | `NOKTURNO_ST_EMAIL`, `NOKTURNO_ST_PASSWORD` | Sledujteto – hledání chce účet, přehrávání Premium |
 | `NOKTURNO_FS_USERNAME`, `NOKTURNO_FS_PASSWORD` | FastShare (od 5.1.0) – hledá se i bez účtu, přehrání jde z kreditu nebo neomezeného tarifu. Soubor přeposílá aplikace přes `/play/` s cookie z přihlášení |
 | `NOKTURNO_FS_PROVIDER` | `sdilej` = účet výš je ze Sdilej.cz (týž katalog, jiné účty); prázdné = FastShare |
+| `NOKTURNO_FS_PRIMO` | `1` = soubor z FastShare jde přímo ke klientovi (`proxyHeaders`), ne přes aplikaci; umí Nuvio a Stremio na počítači, Stremio pro Android ne |
 | `NOKTURNO_PT_EMAIL`, `NOKTURNO_PT_PASSWORD` | Přehraj.to (od 7.0.4) – s Premium účtem přijde původní soubor, bez něj jen překódovaný. Na veřejné instanci se nenastavuje: účet je per-uživatel ve formuláři, jako u ostatních zdrojů |
 | `NOKTURNO_TMDB_KEY` | klíč TMDB instance pro katalogy TMDB (od 5.1.0); bez něj se nabízejí jen katalogy Sosáče. Ve formuláři se nezadává |
 | `NOKTURNO_HS_ENABLED` | `1` zapne HellSpy (veřejný, bez účtu); od 10.4.1 ve výchozím stavu vypnutý |

@@ -51,6 +51,9 @@ PROSTREDI = {
     "NOKTURNO_FS_PASSWORD": "fs_password",
     # „sdilej" = účet ze Sdilej.cz, týž katalog jako FastShare (jádro lib/fastshare_api)
     "NOKTURNO_FS_PROVIDER": "fs_provider",
+    # FastShare přímo ze zdroje (`behaviorHints.proxyHeaders`), ne přes `/play/` aplikace —
+    # umí Nuvio a Stremio na PC, Stremio pro Android hlavičky nepošle (viz mapping.PRES_HLAVICKY)
+    "NOKTURNO_FS_PRIMO": "fs_primo",
     "NOKTURNO_PT_EMAIL": "pt_email",
     "NOKTURNO_PT_PASSWORD": "pt_password",
     # vlastní klíč Last.fm pro katalogy koncertů (jen v profilu, nikdy v adrese ani v logu)
@@ -92,7 +95,7 @@ STARE_TMDB = {"tmdb.popularni.filmy": ("movie", "popularity.desc", "Populární 
               "tmdb.nejlepsi.serialy": ("series", "vote_average.desc", "Nejlépe hodnocené seriály",
                                         "Najlepšie hodnotené seriály")}
 # klíče, u kterých engine čeká pravdivostní hodnotu, ne řetězec
-LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d", "hide_lowq")
+LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d", "hide_lowq", "fs_primo")
 
 VYCHOZI = {
     "sort_streams": "quality",   # ve Stremiu je vidět jen několik prvních řádků
@@ -171,6 +174,8 @@ def from_mapping(raw):
     # výchozí FastShare v nastavení nenechávat, ať se otisk nastavení nezmění
     if options.get("fs_provider") != "sdilej":
         options.pop("fs_provider", None)
+    if not options.get("fs_primo"):
+        options.pop("fs_primo", None)   # vypnuto = výchozí, otisk se nemění
     if options.get("sort_streams") not in SORT_ORDERS:
         options["sort_streams"] = VYCHOZI["sort_streams"]
     # Přehraj.to je ve Stremiu per-uživatel jako ostatní zdroje — účet z adresy/prostředí.

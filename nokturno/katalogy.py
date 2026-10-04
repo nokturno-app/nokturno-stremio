@@ -194,6 +194,7 @@ class Katalogy:
         return [{"type": KONCERTY, "id": PREFIX + K_NOVE, "name": nove},
                 {"type": KONCERTY, "id": PREFIX + K_ABECEDA, "name": abeceda,
                  "extra": [{"name": "genre", "isRequired": False, "options": zanry},
+                           {"name": "search", "isRequired": False},
                            {"name": "skip", "isRequired": False}]}]
 
     @staticmethod
@@ -203,7 +204,9 @@ class Katalogy:
         img = concertcat.image(a["files"])
         return dict(out, poster=img) if img else out
 
-    def _koncerty_polozky(self, options, klic, skip, zanr, jazyk="cs"):
+    def _koncerty_polozky(self, options, klic, skip, zanr, jazyk="cs", hledej=""):
+        if hledej and klic == K_ABECEDA:
+            return [self._koncert_nahled(a) for a in self.overovani.hledej_koncerty(options, hledej)][skip:skip + STRANKA_VK]
         index = self.overovani.koncerty(options)
         if klic == K_NOVE:   # interpreti podle nejnovějšího koncertu, celé najednou
             if skip:
@@ -295,13 +298,13 @@ class Katalogy:
                              "extra": [{"name": "skip", "isRequired": False}]}
                             for klic, typ, _zdroj, _cid, cs, sk in self.vybrane(options)]
 
-    def polozky(self, typ, katalog_id, skip=0, options=None, zanr="", jazyk="cs"):
+    def polozky(self, typ, katalog_id, skip=0, options=None, zanr="", jazyk="cs", hledej=""):
         """Náhledy jedné stránky katalogu. None = takový katalog tahle instance nemá."""
         klic = katalog_id[len(PREFIX):] if str(katalog_id).startswith(PREFIX) else ""
         if klic in (K_NOVE, K_ABECEDA):
             if typ != KONCERTY or not self.ma_koncerty(options):
                 return None
-            return self._koncerty_polozky(options, klic, max(0, int(skip or 0)), zanr, jazyk)
+            return self._koncerty_polozky(options, klic, max(0, int(skip or 0)), zanr, jazyk, hledej)
         if klic.startswith(VK):
             vlastni = self.vlastni(options)
             poradi = klic[len(VK):]

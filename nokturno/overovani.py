@@ -71,6 +71,17 @@ class Overovani:
         store = self._koncerty_store(options)
         return concertcat.load_index(store) if store is not None else {}
 
+    def hledej_koncerty(self, options, text):
+        """Interpreti s koncerty podle jména; neznámého prohledá ve zdrojích profilu a přidá (ruční interpret).
+        Hledání ve zdrojích běží ve vlákně požadavku. Bez koncertů v profilu prázdný seznam."""
+        store = self._koncerty_store(options)
+        if store is None:
+            return []
+        rows = concertcat.find(concertcat.load_index(store), text)
+        if not rows and concertcat.add_artist(self.enginy.pro(options), store, text):
+            rows = concertcat.find(concertcat.load_index(store), text)
+        return rows
+
     def _index(self, options, cat):
         index = self.store.load(self.klic(options, cat), {})
         sig = catindex.signature(*config.vk_definice(cat))

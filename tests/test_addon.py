@@ -3461,6 +3461,11 @@ class TestProfily(unittest.TestCase):
                 self.assertIn(s, t, (jm, s))
 
 
+def kat_abeceda():
+    from nokturno import katalogy as kat
+    return kat.K_ABECEDA
+
+
 class TestKatalogKoncertu(unittest.TestCase):
     """Koncerty (volba `koncerty_zanry`): validace, ověřování s falešnými Last.fm a zdroji, manifest, meta a stream."""
 
@@ -3480,7 +3485,7 @@ class TestKatalogKoncertu(unittest.TestCase):
                 return contextlib.nullcontext()
 
             def sources(self):
-                return {"webshare": True}
+                return {"webshare": True, "hellspy": True}
 
             def _opt(self, key, default=""):
                 return options.get(key, default)
@@ -3514,6 +3519,15 @@ class TestKatalogKoncertu(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         return options, k, ov
+
+    def test_hledani_interpreta(self):
+        options, k, ov = self._vse()
+        self.assertTrue(ov.krok())
+        self.assertIn("search", [e["name"] for m in k.manifest(options) if m["id"].endswith(kat_abeceda())
+                                 for e in m["extra"]])
+        self.assertEqual([m["name"] for m in k.polozky("Koncerty", "nokturno.koncerty.abeceda", 0, options, hledej="metal")],
+                         ["Metallica"])
+        self.assertEqual(k.polozky("Koncerty", "nokturno.koncerty.abeceda", 0, options, hledej="zzzz"), [])
 
     def test_validace(self):
         self.assertEqual(config.vlastni_katalogy([{"n": "R", "t": "koncert", "g": ["metal"]}]), [])

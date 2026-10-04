@@ -73,7 +73,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "10.3.0"
+VERZE = "10.3.1"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián

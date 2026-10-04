@@ -78,8 +78,9 @@ class Overovani:
         if store is None:
             return []
         rows = concertcat.find(concertcat.load_index(store), text)
-        if not rows and concertcat.add_artist(self.enginy.pro(options), store, text):
-            rows = concertcat.find(concertcat.load_index(store), text)
+        mid = None if rows else concertcat.add_artist(self.enginy.pro(options), store, text)
+        if mid:   # podle id: jméno z Last.fm se od hledaného textu liší („arakian“ → „Arakain“)
+            rows = [a for _e, a in concertcat._artists(concertcat.load_index(store)) if a["id"] == mid]
         return rows
 
     def _index(self, options, cat):

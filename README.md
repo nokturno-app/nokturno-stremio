@@ -166,7 +166,7 @@ Hodnoty jsou stejné jako v doplňku pro Kodi, takže se dají opsat z jeho
 | `NOKTURNO_FS_PROVIDER` | `sdilej` = účet výš je ze Sdilej.cz (týž katalog, jiné účty); prázdné = FastShare |
 | `NOKTURNO_PT_EMAIL`, `NOKTURNO_PT_PASSWORD` | Přehraj.to (od 7.0.4) – s Premium účtem přijde původní soubor, bez něj jen překódovaný. Na veřejné instanci se nenastavuje: účet je per-uživatel ve formuláři, jako u ostatních zdrojů |
 | `NOKTURNO_TMDB_KEY` | klíč TMDB instance pro katalogy TMDB (od 5.1.0); bez něj se nabízejí jen katalogy Sosáče. Ve formuláři se nezadává |
-| `NOKTURNO_HS_ENABLED` | HellSpy je veřejný, stačí přepínač; zapnutý ve výchozím stavu |
+| `NOKTURNO_HS_ENABLED` | `1` zapne HellSpy (veřejný, bez účtu); od 10.4.1 ve výchozím stavu vypnutý |
 | `NOKTURNO_DAV1_URL` … `NOKTURNO_DAV3_NAME` | až tři vlastní úložiště (WebDAV): `_URL`, `_USERNAME`, `_PASSWORD`, `_NAME` |
 | `NOKTURNO_PREF_LANG`, `NOKTURNO_PREF_SURROUND`, `NOKTURNO_SORT`, `NOKTURNO_HIDE_SD`, `NOKTURNO_MAX_BITRATE` | předvolby řazení a filtrování |
 | `NOKTURNO_KATALOGY` | zapnuté katalogy, klíče oddělené čárkou (viz `nokturno/katalogy.py`) |
@@ -178,7 +178,7 @@ Hodnoty jsou stejné jako v doplňku pro Kodi, takže se dají opsat z jeho
 | `NOKTURNO_HOST`, `NOKTURNO_PORT`, `NOKTURNO_DATA` | na čem poslouchat (v Dockeru `0.0.0.0`, za reverzní proxy `127.0.0.1`), port a složka s cache |
 | `NOKTURNO_CONFIGURE_PREFILL` | `1` předvyplní formulář účty z prostředí – jen na vlastní instanci, nikdy na veřejné |
 
-Žádný zdroj není povinný. Bez nastavení běží doplněk jen s HellSpy.
+Hlavní je vlastní úložiště (`NOKTURNO_DAV1_URL`…), úložiště třetích stran jsou volitelná a ve výchozím stavu vypnutá.
 
 ### Jak to funguje
 

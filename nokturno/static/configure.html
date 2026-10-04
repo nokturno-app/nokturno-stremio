@@ -293,7 +293,7 @@
   </div>
 
   <ul class="kroky">
-    <li><a href="#zdroje"><b>1</b>Zdroje a účty</a></li>
+    <li><a href="#zdroje"><b>1</b>Vlastní úložiště a zdroje</a></li>
     <li><a href="#predvolby"><b>2</b>Předvolby</a></li>
     <li><a href="#instalace"><b>3</b>Přidat do aplikace</a></li>
     <li><a href="#otazky"><b>?</b>Časté otázky</a></li>
@@ -636,7 +636,7 @@
         <label class="prepinac">
           <input type="checkbox" name="hs_enabled">
           <span><strong>Používat HellSpy</strong>
-            <small>Veřejná úschovna s původními soubory (často ve vysoké kvalitě). Nic se nevyplňuje, stačí nechat zapnuté.</small></span>
+            <small>Veřejná úschovna s původními soubory (často ve vysoké kvalitě). Nic se nevyplňuje, stačí zapnout.</small></span>
         </label>
       </div>
     </section>
@@ -820,7 +820,7 @@
       <summary>Doplněk je přidaný, ale u filmu nejsou žádné streamy Nokturna</summary>
       <div class="obsah">
         <ul>
-          <li>Nahoře klikni na <strong>✓ Ověřit všechny účty</strong> – nejčastější příčinou je překlep v hesle nebo vypršelé VIP na WebShare.</li>
+          <li>Nahoře klikni na <strong>✓ Ověřit všechny účty</strong> – nejčastější příčinou je překlep v adrese nebo hesle vlastního úložiště, u volitelných zdrojů pak vypršelé předplatné.</li>
           <li>Aplikace Nokturno musí běžet. Když počítač, box nebo NAS s ní spí, Stremio streamy Nokturna nedostane.</li>
           <li>Hledání trvá pár sekund. Stremio ukazuje streamy postupně, jak které doplňky odpovídají – chvilku počkej.</li>
           <li>Titul nemusí na zdrojích vůbec být, hlavně úplné novinky a málo známé seriály.</li>
@@ -1045,10 +1045,6 @@ if (form.elements["id"].value) $("identita-pozn").hidden = false;
   w.onerror = () => { w.terminate(); nastavStav(""); };
   w.postMessage({ vyzva, bity });
 })();
-
-if (Object.keys(soucasne).length === 0) {
-  form.elements["hs_enabled"].checked = true;   // HellSpy nic nestojí
-}
 
 // --- katalogy: zaškrtávátka bez jména, do adresy jde jen skryté pole „katalogy“ ---
 const KATALOGY = __KATALOGY__;

@@ -293,7 +293,7 @@
   </div>
 
   <ul class="kroky">
-    <li><a href="#zdroje"><b>1</b>Zdroje a účty</a></li>
+    <li><a href="#zdroje"><b>1</b>Vlastné úložisko a zdroje</a></li>
     <li><a href="#predvolby"><b>2</b>Predvoľby</a></li>
     <li><a href="#instalace"><b>3</b>Pridať do aplikácie</a></li>
     <li><a href="#otazky"><b>?</b>Časté otázky</a></li>
@@ -636,7 +636,7 @@
         <label class="prepinac">
           <input type="checkbox" name="hs_enabled">
           <span><strong>Používať HellSpy</strong>
-            <small>Verejná úschovňa s pôvodnými súbormi (často vo vysokej kvalite). Nič sa nevypĺňa, stačí nechať zapnuté.</small></span>
+            <small>Verejná úschovňa s pôvodnými súbormi (často vo vysokej kvalite). Nič sa nevypĺňa, stačí zapnúť.</small></span>
         </label>
       </div>
     </section>
@@ -820,7 +820,7 @@
       <summary>Doplnok je pridaný, ale pri filme nie sú žiadne streamy Nokturna</summary>
       <div class="obsah">
         <ul>
-          <li>Hore klikni na <strong>✓ Overiť všetky účty</strong> – najčastejšou príčinou je preklep v hesle alebo vypršané VIP na WebShare.</li>
+          <li>Hore klikni na <strong>✓ Overiť všetky účty</strong> – najčastejšou príčinou je preklep v adrese alebo hesle vlastného úložiska, pri voliteľných zdrojoch potom vypršané predplatné.</li>
           <li>Aplikácia Nokturno musí bežať. Keď počítač, box alebo NAS s ňou spí, Stremio streamy Nokturna nedostane.</li>
           <li>Hľadanie trvá pár sekúnd. Stremio ukazuje streamy postupne, ako ktoré doplnky odpovedajú – chvíľku počkaj.</li>
           <li>Titul nemusí byť na zdrojoch vôbec, hlavne úplné novinky a málo známe seriály.</li>
@@ -1046,10 +1046,6 @@ if (form.elements["id"].value) $("identita-pozn").hidden = false;
   w.onerror = () => { w.terminate(); nastavStav(""); };
   w.postMessage({ vyzva, bity });
 })();
-
-if (Object.keys(soucasne).length === 0) {
-  form.elements["hs_enabled"].checked = true;   // HellSpy nic nestojí
-}
 
 // --- katalogy: zaškrtávátka bez jména, do adresy jde jen skryté pole „katalogy“ ---
 const KATALOGY = __KATALOGY__;

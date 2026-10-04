@@ -416,7 +416,7 @@ class TestNastaveni(unittest.TestCase):
     def test_prazdne_prostredi_da_rozumne_vychozi(self):
         options = config.from_environ({})
         self.assertEqual(options["sort_streams"], "quality")
-        self.assertTrue(options["hs_enabled"], "HellSpy nepotřebuje účet, ať je zapnutý")
+        self.assertFalse(options["hs_enabled"], "úložiště třetích stran jsou ve výchozím stavu vypnutá")
 
     def test_prepinace_z_textu(self):
         options = config.from_environ({"NOKTURNO_HIDE_SD": "ano", "NOKTURNO_PREF_SURROUND": "0",
@@ -533,7 +533,7 @@ class TestOvereniUctu(unittest.TestCase):
         _r, odpoved = self._check({"streamuj_username": "u"})
         self.assertIsNone(odpoved.data["webshare"])
         self.assertEqual(odpoved.data["streamuj"], {"heslo": False})
-        self.assertTrue(odpoved.data["hellspy"], "HellSpy je ve výchozím stavu zapnutý")
+        self.assertFalse(odpoved.data["hellspy"], "HellSpy je ve výchozím stavu vypnutý")
 
     def test_zvenku_s_vlastnim_nastavenim_jde(self):
         r, odpoved = self._check({"ws_username": "u", "ws_password": "spravne"}, verejny=True)
@@ -1635,7 +1635,7 @@ class TestFormularHellSpyAJazyk(unittest.TestCase):
 
     def test_server_bere_false_a_any(self):
         self.assertIs(config.from_mapping({"hs_enabled": False})["hs_enabled"], False)
-        self.assertIs(config.from_mapping({})["hs_enabled"], True, "bez klíče zůstává výchozí")
+        self.assertIs(config.from_mapping({})["hs_enabled"], False, "bez klíče zůstává výchozí")
         self.assertEqual(config.from_mapping({"pref_lang": "ANY"})["pref_lang"], "")
         self.assertEqual(config.from_mapping({})["pref_lang"], "CZ")
         self.assertEqual(config.from_mapping({"pref_lang": "HU"})["pref_lang"], "HU")
@@ -2831,7 +2831,7 @@ class TestSpolecnaCache(unittest.TestCase):
         from nokturno.enginy import Enginy, SPOLECNA_SLOZKA
         tmp = tempfile.mkdtemp()
         s = Enginy(tmp, {})
-        a = s.pro(config.from_mapping({"ws_username": "a", "ws_password": "p"}))
+        a = s.pro(config.from_mapping({"ws_username": "a", "ws_password": "p", "hs_enabled": True}))
         b = s.pro(config.from_mapping({"ws_username": "b", "ws_password": "p"}))
         self.assertIsNot(a.store, b.store)          # tokeny a streamy každý svoje
         self.assertIs(a.shared, b.shared)           # metadata a hlavičky společné

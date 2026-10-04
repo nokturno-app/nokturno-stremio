@@ -97,7 +97,7 @@ LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d", "hide_lowq")
 VYCHOZI = {
     "sort_streams": "quality",   # ve Stremiu je vidět jen několik prvních řádků
     "pref_lang": "CZ",
-    "hs_enabled": True,          # HellSpy nepotřebuje účet, není co nastavovat
+    "hs_enabled": False,         # úložiště třetích stran jsou volitelná, zapíná je uživatel
     "hide_lowq": True,           # nahrávky z kina (CAM, TS…) se skrývají, pokud je k dispozici něco lepšího
 }
 
@@ -397,6 +397,7 @@ def sources_from_options(options):
     poslal (jeden GET na náhodný base64 = nová složka navždy; audit 2026-09-14)."""
     o = options or {}
     zapnuto = {
+        "storage": any(str(o.get(f"dav{n}_url") or "").strip() for n in (1, 2, 3)),
         "sosac": bool(str(o.get("streamuj_username") or "").strip()),
         "webshare": bool(str(o.get("ws_username") or "").strip()),
         "hellspy": bool(o.get("hs_enabled")),
@@ -404,6 +405,5 @@ def sources_from_options(options):
         "fastshare": bool(str(o.get("fs_username") or "").strip()),
         "prehrajto": bool(str(o.get("pt_email") or "").strip()),
         "cztor": bool(o.get(CZ_KLIC)),
-        "storage": any(str(o.get(f"dav{n}_url") or "").strip() for n in (1, 2, 3)),
     }
     return [NAZVY_ZDROJU[k] for k, v in zapnuto.items() if v]

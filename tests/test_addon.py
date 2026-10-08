@@ -425,6 +425,14 @@ class TestNastaveni(unittest.TestCase):
         self.assertTrue(options["hide_3d"])
         self.assertFalse(options["pref_surround"])
 
+    def test_skryt_dv_a_hdr(self):
+        """GremliNN a spacik (Discord 2026-10-05): stejné volby jako Kodi a HA."""
+        options = config.from_environ({"NOKTURNO_HIDE_DV": "1", "NOKTURNO_HIDE_HDR": "0"})
+        self.assertIs(options["hide_dv"], True)
+        self.assertIs(options["hide_hdr"], False)
+        self.assertFalse(config.from_environ({}).get("hide_dv"), "ve výchozím stavu se nic neskrývá")
+        self.assertIs(config.from_mapping({"hide_hdr": True})["hide_hdr"], True, "formulář posílá true/false")
+
     def test_nesmyslna_hodnota_spadne_na_vychozi(self):
         options = config.from_environ({"NOKTURNO_SORT": "podle-barvy", "NOKTURNO_PREF_LANG": "XX"})
         self.assertEqual(options["sort_streams"], "quality")

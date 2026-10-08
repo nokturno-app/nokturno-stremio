@@ -64,6 +64,8 @@ PROSTREDI = {
     "NOKTURNO_PREF_SURROUND": "pref_surround",
     "NOKTURNO_HIDE_SD": "hide_sd",
     "NOKTURNO_HIDE_3D": "hide_3d",
+    "NOKTURNO_HIDE_DV": "hide_dv",
+    "NOKTURNO_HIDE_HDR": "hide_hdr",
     "NOKTURNO_HIDE_LOWQ": "hide_lowq",
     "NOKTURNO_MAX_BITRATE": "max_bitrate_mbps",
     "NOKTURNO_SORT": "sort_streams",
@@ -95,7 +97,7 @@ STARE_TMDB = {"tmdb.popularni.filmy": ("movie", "popularity.desc", "Populární 
               "tmdb.nejlepsi.serialy": ("series", "vote_average.desc", "Nejlépe hodnocené seriály",
                                         "Najlepšie hodnotené seriály")}
 # klíče, u kterých engine čeká pravdivostní hodnotu, ne řetězec
-LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d", "hide_lowq", "fs_primo")
+LOGICKE = ("hs_enabled", "pref_surround", "hide_sd", "hide_3d", "hide_dv", "hide_hdr", "hide_lowq", "fs_primo")
 
 VYCHOZI = {
     "sort_streams": "quality",   # ve Stremiu je vidět jen několik prvních řádků

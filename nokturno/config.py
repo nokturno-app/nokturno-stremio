@@ -87,7 +87,7 @@ VK_KLIC = "vk"
 VK_MAX = 20   # nastavení je v profilu, ne v adrese; ověřované katalogy se počítají do `mycat.MAX_VERIFIED` na zařízení
 VK_KLICOVA_SLOVA = mycat_lib.KEYWORDS   # témata (pohádky, Vánoce…): TMDB je má jen jako klíčová slova
 LASTFM_RE = re.compile(r"^[0-9a-f]{1,64}$")
-VK_RAZENI = ("popularity.desc", "vote_average.desc", "primary_release_date.desc", mycat_lib.ALPHA)
+VK_RAZENI = ("popularity.desc", "vote_average.desc", "primary_release_date.desc", "primary_release_date.asc", mycat_lib.ALPHA)
 # žánry koncertů (štítky Last.fm, `concertcat.TAGS`) oddělené čárkou; prázdné = koncerty vypnuté
 KONCERTY_KLIC = "koncerty_zanry"
 # volitelné katalogy TMDB z karty Katalogy (do 10.0.0b2) → vlastní katalogy v režimu Katalog z TMDB

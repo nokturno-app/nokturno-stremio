@@ -864,7 +864,7 @@ class TestKatalogy(unittest.TestCase):
                                       {"n": "B", "t": "movie", "l": "ko"}])
         self.assertEqual(vk[0]["zeme"], ["CZ", "SK"])
         self.assertEqual(config.vk_parametry(vk[0])["with_origin_country"], "CZ|SK")
-        self.assertNotIn("with_original_language", config.vk_parametry({**vk[0], "l": "cs"}))
+        self.assertEqual(config.vk_parametry({**vk[0], "l": "ko"})["with_original_language"], "cs|sk")   # jazyk zemí
         self.assertEqual(config.vk_parametry(vk[1]), {"with_original_language": "ko"})   # starý katalog dál funguje
         self.assertEqual(len(config.vlastni_katalogy([{"n": "C", "t": "movie", "zeme": list(
             ("CZ", "SK", "US", "GB", "FR", "DE", "IT"))}])[0]["zeme"]), 5)

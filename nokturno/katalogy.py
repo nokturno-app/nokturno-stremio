@@ -281,7 +281,7 @@ class Katalogy:
         with ThreadPoolExecutor(max_workers=5) as pool:
             dalsi = list(pool.map(lambda p: self.dash.discover(typ, params, page=p)[0] or [], range(2, potreba + 1)))
         videne, out = set(), []
-        for meta in [m for stranka in [prvni] + dalsi for m in stranka]:
+        for meta in [m for stranka in [prvni] + dalsi for m in mycat_lib.released(stranka)]:
             nahl = nahled(typ, meta)
             if nahl and nahl["id"] not in videne:
                 videne.add(nahl["id"])

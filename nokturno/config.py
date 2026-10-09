@@ -287,7 +287,9 @@ def vk_parametry(c):
     params = {"with_genres": ("|" if c.get("j") == "or" else ",").join(str(x) for x in c.get("g") or []),
               "with_keywords": "|".join(VK_KLICOVA_SLOVA[k] for k in c.get("k") or []),
               "with_origin_country": "|".join(c.get("zeme") or []),
-              "with_original_language": "" if c.get("zeme") else c.get("l") or "", "year_from": year_from,
+              "with_original_language": "|".join(dict.fromkeys(
+                  lang for z in c.get("zeme") or [] for lang in mycat_lib.COUNTRY_LANGS.get(z, ())))
+              if c.get("zeme") else c.get("l") or "", "year_from": year_from,
               "year_to": year_to,
               "sort_by": "popularity.desc" if c.get("s") == mycat_lib.ALPHA else c.get("s") or ""}
     return {k: v for k, v in params.items() if v}

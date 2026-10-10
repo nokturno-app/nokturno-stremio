@@ -775,6 +775,25 @@ class TestVlastniKatalogy(unittest.TestCase):
                 items["tt2"]["ok"] = True
                 self.assertEqual([m["id"] for m in ov.polozky(options, cat)], ["tt2"])
 
+    def test_overovani_katalog_mimo_profil(self):
+        """Adresa bez uloženého profilu (mcheus, Discord 2026-10-10): prázdný index → první stránka z TMDB
+        a katalog se od prvního dotazu klienta ověřuje taky."""
+        import tempfile
+        from nokturno.overovani import Overovani
+
+        class Profily:
+            def seznam(self):
+                return []
+
+        options = config.from_mapping({"vk": [{"n": "A", "t": "movie", "ov": 1, "z": "found"}]})
+        cat = config.vlastni_katalogy(options["vk"])[0]
+        dash = self.Dash(stran=1, na_strane=3)
+        with tempfile.TemporaryDirectory() as d:
+            ov = Overovani(d, None, dash, Profily())
+            self.assertEqual(ov._cile(), [])
+            self.assertEqual(len(ov.polozky(options, cat)), 3)
+            self.assertEqual([klic for _o, _c, klic in ov._cile()], [ov.klic(options, cat)])
+
     def test_v_adrese_stabilni_retezec(self):
         a = config.from_mapping({"vk": [{"t": "series", "n": "Krimi", "g": [80]}]})
         b = config.from_mapping({"vk": json.dumps([{"n": "Krimi", "g": [80], "t": "series"}])})

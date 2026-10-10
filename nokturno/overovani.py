@@ -19,7 +19,7 @@ import time
 
 from . import config
 from .core.lib import catindex, concertcat
-from .core.lib.mycat import FIRST_BATCH, POOL_EVERY, pool_for
+from .core.lib.mycat import FIRST_BATCH, MAX_VERIFIED, POOL_EVERY, pool_for, released
 from .core.lib.store import Store
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,6 +34,10 @@ class Overovani:
         self.enginy, self.dash, self.profily, self.interval = enginy, dash, profily, interval
         self._dalsi = 0
         self._uklid = 0
+        # katalogy z adres, na které se klient ptal, ale nejsou v uloženém profilu (stará adresa s celým
+        # nastavením, adresa z jiného zařízení) – jinak by je nic neověřovalo a zůstaly prázdné napořád
+        # (mcheus, Discord 2026-10-10); jen v paměti, po restartu je doplní další dotaz klienta
+        self._dotazovane = {}
 
     @staticmethod
     def klic(options, cat):
@@ -92,12 +96,23 @@ class Overovani:
         """Metadata vyhovujících titulů v pořadí podle `z`. Dokud žádný titul nevyhověl, kandidáti, kteří
         ještě neprošli ověřením (v pořadí výběru): Nuvio prázdný katalog z domovské obrazovky schová
         a vrátí ho až po novém přidání doplňku (Discord 2026-10-10)."""
+        klic = self.klic(options, cat)
+        if klic not in self._dotazovane and len(self._dotazovane) < MAX_VERIFIED:
+            self._dotazovane[klic] = (options, cat)
         index = self._index(options, cat)
         found = catindex.visible(index, sort=cat.get("z") or "found")
         if found:
             return found
         cekaji = [e for e in (index.get("items") or {}).values() if e.get("ok") is None and e.get("meta")]
-        return [e["meta"] for e in sorted(cekaji, key=lambda e: e.get("rank", 0))]
+        if cekaji or index.get("items") or self.dash is None:
+            return [e["meta"] for e in sorted(cekaji, key=lambda e: e.get("rank", 0))]
+        # index ještě nemá ani kandidáty (ověřování se k němu nedostalo): první stránka z TMDB
+        try:
+            metas, _pages = self.dash.discover(cat["t"], config.vk_parametry(cat), 1)
+        except Exception as err:  # noqa: BLE001 – výpadek = prázdný katalog jako dřív
+            _LOGGER.debug("kandidáti %s: %s", klic, err)
+            return []
+        return [m for m in released(metas or []) if str(m.get("id") or "").startswith("tt")]
 
     def _cile(self):
         """Ověřované katalogy všech uložených profilů, bez duplicit (stejný klíč indexu)."""
@@ -114,6 +129,10 @@ class Overovani:
             if klic is not None and klic not in videne:
                 videne.add(klic)
                 out.append((options, None, klic))
+        for klic, (options, cat) in list(self._dotazovane.items()):
+            if self.dash is not None and klic not in videne:
+                videne.add(klic)
+                out.append((options, cat, klic))
         return out
 
     def krok(self):

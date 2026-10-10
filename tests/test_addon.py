@@ -698,6 +698,49 @@ class TestVlastniKatalogy(unittest.TestCase):
             vis = ov.polozky(config.decode(kousek), cat)
             self.assertEqual([m["id"] for m in vis], ["tt0010000"])
 
+    def test_overovani_uklada_po_kazdem_titulu(self):
+        """Restart uprostřed úvodní dávky nesmí zahodit nález – Nuvio prázdný katalog schová (Discord 2026-10-10)."""
+        import contextlib
+        import tempfile
+        from nokturno.overovani import Overovani
+
+        class Restart(BaseException):
+            pass
+
+        class Engine:
+            volani = 0
+
+            def background(self):
+                return contextlib.nullcontext()
+
+            def verify_title(self, ctype, item_id, *a, **kw):
+                Engine.volani += 1
+                if Engine.volani > 1:
+                    raise Restart()
+                return True
+
+        class Enginy:
+            def pro(self, options):
+                return Engine()
+
+        options = config.from_mapping({"vk": [{"n": "A", "t": "movie", "ov": 1, "z": "found"}]})
+        kousek = config.encode(options)
+
+        class Profily:
+            def seznam(self):
+                return [{"klic": "p1"}]
+
+            def nacti(self, klic):
+                return kousek
+
+        with tempfile.TemporaryDirectory() as d:
+            ov = Overovani(d, Enginy(), self.Dash(stran=1, na_strane=3), Profily())
+            with self.assertRaises(Restart):
+                ov.krok()
+            cat = config.vlastni_katalogy(options["vk"])[0]
+            vis = Overovani(d, Enginy(), self.Dash(stran=1, na_strane=3), Profily()).polozky(config.decode(kousek), cat)
+            self.assertEqual(len(vis), 1)
+
     def test_v_adrese_stabilni_retezec(self):
         a = config.from_mapping({"vk": [{"t": "series", "n": "Krimi", "g": [80]}]})
         b = config.from_mapping({"vk": json.dumps([{"n": "Krimi", "g": [80], "t": "series"}])})

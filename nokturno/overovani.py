@@ -144,7 +144,11 @@ class Overovani:
                 _LOGGER.debug("ověření %s: %s", mid, err)
                 vysledek = None
             catindex.record(index, mid, vysledek, int(time.time()))
-        self.store.save(klic, index)
+            # po každém titulu: úvodní dávka trvá na TV desítky minut, katalog se má plnit hned
+            # a restart aplikace nesmí zahodit, co už se ověřilo (Nuvio prázdný katalog schová)
+            self.store.save(klic, index)
+        if not batch:
+            self.store.save(klic, index)
         return bool(batch)
 
     def _krok_koncerty(self, options):

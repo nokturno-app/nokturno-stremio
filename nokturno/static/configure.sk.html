@@ -680,12 +680,22 @@
         <label class="prepinac">
           <input type="checkbox" name="hide_dv">
           <span><strong>Skryť Dolby Vision streamy</strong>
-            <small>Súbory Dolby Vision (podľa názvu: DV, DoVi, Dolby Vision) sa nezobrazia nikdy, ani keď iný stream nie je.</small></span>
+            <small>Súbory Dolby Vision sa nezobrazia nikdy, ani keď iný stream nie je. Spoznáme ich z hlavičky súboru (pri prvých streamoch výpisu), inak podľa názvu: DV, DoVi, Dolby Vision.</small></span>
+        </label>
+        <label class="prepinac">
+          <input type="checkbox" name="hide_dv_only">
+          <span><strong>Skryť Dolby Vision bez záložnej vrstvy (profil 5)</strong>
+            <small>Len streamy, ktoré televízor bez Dolby Vision zobrazí zelene a fialovo. Spoznáme ich z hlavičky súboru, pri ostatných len podľa označenia P5 v názve.</small></span>
         </label>
         <label class="prepinac">
           <input type="checkbox" name="hide_hdr">
           <span><strong>Skryť HDR streamy</strong>
-            <small>Súbory HDR, vrátane Dolby Vision (podľa názvu: HDR, HDR10, HDR10+, DV, DoVi, Dolby Vision), sa nezobrazia nikdy, ani keď iný stream nie je.</small></span>
+            <small>Súbory HDR vrátane Dolby Vision sa nezobrazia nikdy, ani keď iný stream nie je. Spoznáme ich z hlavičky súboru (pri prvých streamoch výpisu), inak podľa názvu: HDR, HDR10, HDR10+, DV, DoVi, Dolby Vision.</small></span>
+        </label>
+        <label class="prepinac">
+          <input type="checkbox" name="hide_av1">
+          <span><strong>Skryť AV1</strong>
+            <small>Pre prehrávače, ktoré kodek AV1 nevedia (staršie Shield, Apple TV).</small></span>
         </label>
         <label class="prepinac">
           <input type="checkbox" name="hide_lowq">

@@ -210,8 +210,10 @@ def stream_object(popis, odkaz, primy=None, jazyk="cs", primo=()):
 
     # vlevo v úzkém sloupci je místo jen na jméno a kvalitu; HDR/DV k ní patří,
     # protože rozhoduje o tom, jestli má smysl sahat po velkém souboru. Soubor s DV
-    # i HDR10 ukáže obojí – na TV bez Dolby Vision (Samsung) hraje jako HDR10.
-    znacky = [z for z in obraz if z == "DV"] + hdr or obraz[:1]
+    # i HDR10 ukáže obojí – na TV bez Dolby Vision (Samsung) hraje jako HDR10. DV bez záložní
+    # vrstvy (profil 5) je „DV only“: na takové TV je obraz zelený a fialový.
+    # formát obrazu hlásí jádro (`video_tags`: hlavička souboru, jinak název); bez něj starý odhad z názvu
+    znacky = list(popis.get("tags") or []) or [z for z in obraz if z == "DV"] + hdr or obraz[:1]
     vlevo = kvalita + (" " + " • ".join(znacky) if znacky else "")
     # nahrávka z kina je vždy vidět, za kvalitou na tomtéž řádku – vlastní řádek ubíral místo
     if popis.get("lowq"):

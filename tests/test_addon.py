@@ -433,6 +433,24 @@ class TestNastaveni(unittest.TestCase):
         self.assertFalse(config.from_environ({}).get("hide_dv"), "ve výchozím stavu se nic neskrývá")
         self.assertIs(config.from_mapping({"hide_hdr": True})["hide_hdr"], True, "formulář posílá true/false")
 
+    def test_skryt_dv_bez_zalozni_vrstvy_a_av1(self):
+        options = config.from_environ({"NOKTURNO_HIDE_DV_ONLY": "1", "NOKTURNO_HIDE_AV1": "0"})
+        self.assertIs(options["hide_dv_only"], True)
+        self.assertIs(options["hide_av1"], False)
+        self.assertFalse(config.from_environ({}).get("hide_dv_only"), "ve výchozím stavu se nic neskrývá")
+        self.assertFalse(config.from_environ({}).get("hide_av1"))
+        self.assertIs(config.from_mapping({"hide_av1": True})["hide_av1"], True, "formulář posílá true/false")
+        for stranka in ("configure.html", "configure.sk.html"):
+            text = (pathlib.Path(config.__file__).parent / "static" / stranka).read_text("utf-8")
+            for klic in ("hide_dv_only", "hide_av1"):
+                self.assertIn(f'name="{klic}"', text, stranka)
+
+    def test_stitky_obrazu_z_jadra(self):
+        objekt = mapping.stream_object({**POPIS, "quality": "4K", "tags": ["DV only"], "file": "Film.HDR10.mkv"}, lambda u: u)
+        self.assertEqual(objekt["name"], "4K DV only", "štítky z jádra nahrazují odhad z názvu")
+        objekt = mapping.stream_object({**POPIS, "quality": "4K", "tags": ["DV", "HDR10"]}, lambda u: u)
+        self.assertEqual(objekt["name"], "4K DV • HDR10")
+
     def test_nesmyslna_hodnota_spadne_na_vychozi(self):
         options = config.from_environ({"NOKTURNO_SORT": "podle-barvy", "NOKTURNO_PREF_LANG": "XX"})
         self.assertEqual(options["sort_streams"], "quality")

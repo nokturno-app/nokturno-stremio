@@ -89,8 +89,15 @@ class Overovani:
         return index if isinstance(index, dict) and index.get("sig") == sig else {}
 
     def polozky(self, options, cat):
-        """Metadata vyhovujících titulů v pořadí podle `z`; prázdné, dokud se nic neověřilo."""
-        return catindex.visible(self._index(options, cat), sort=cat.get("z") or "found")
+        """Metadata vyhovujících titulů v pořadí podle `z`. Dokud žádný titul nevyhověl, kandidáti, kteří
+        ještě neprošli ověřením (v pořadí výběru): Nuvio prázdný katalog z domovské obrazovky schová
+        a vrátí ho až po novém přidání doplňku (Discord 2026-10-10)."""
+        index = self._index(options, cat)
+        found = catindex.visible(index, sort=cat.get("z") or "found")
+        if found:
+            return found
+        cekaji = [e for e in (index.get("items") or {}).values() if e.get("ok") is None and e.get("meta")]
+        return [e["meta"] for e in sorted(cekaji, key=lambda e: e.get("rank", 0))]
 
     def _cile(self):
         """Ověřované katalogy všech uložených profilů, bez duplicit (stejný klíč indexu)."""

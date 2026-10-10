@@ -759,6 +759,22 @@ class TestVlastniKatalogy(unittest.TestCase):
             vis = Overovani(d, Enginy(), self.Dash(stran=1, na_strane=3), Profily()).polozky(config.decode(kousek), cat)
             self.assertEqual(len(vis), 1)
 
+    def test_overovani_bez_nalezu_ukaze_kandidaty(self):
+        """Než něco vyhoví, katalog ukáže neověřené kandidáty – prázdný katalog Nuvio schová."""
+        import tempfile
+        from nokturno.overovani import Overovani
+        options = config.from_mapping({"vk": [{"n": "A", "t": "movie", "ov": 1, "z": "found"}]})
+        cat = config.vlastni_katalogy(options["vk"])[0]
+        with tempfile.TemporaryDirectory() as d:
+            ov = Overovani(d, None, self.Dash(stran=1, na_strane=3), None)
+            items = {"tt1": {"ok": False, "rank": 0, "meta": {"id": "tt1"}},
+                     "tt2": {"ok": None, "rank": 2, "meta": {"id": "tt2"}},
+                     "tt3": {"ok": None, "rank": 1, "meta": {"id": "tt3"}}}
+            with mock.patch.object(ov, "_index", return_value={"items": items}):
+                self.assertEqual([m["id"] for m in ov.polozky(options, cat)], ["tt3", "tt2"])
+                items["tt2"]["ok"] = True
+                self.assertEqual([m["id"] for m in ov.polozky(options, cat)], ["tt2"])
+
     def test_v_adrese_stabilni_retezec(self):
         a = config.from_mapping({"vk": [{"t": "series", "n": "Krimi", "g": [80]}]})
         b = config.from_mapping({"vk": json.dumps([{"n": "Krimi", "g": [80], "t": "series"}])})

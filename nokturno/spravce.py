@@ -22,6 +22,7 @@ import re
 import secrets
 import threading
 import time
+import urllib.parse
 
 from . import soukroma
 
@@ -30,9 +31,10 @@ _LOGGER = logging.getLogger(__name__)
 COOKIE = "nokturno_spravce"
 # hlavičky, které přidává proxy – s nimi adresa klienta neříká, odkud požadavek přišel
 HLAVICKY_PROXY = ("X-Forwarded-For", "X-Real-IP", "Forwarded", "Cf-Connecting-IP", "X-Forwarded-Host",
-                  "Tailscale-Funnel-Request")
+                  "X-Forwarded-Proto", "X-Forwarded-Port", "Via", "Tailscale-Funnel-Request")
 ABECEDA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-MAX_CHYB = 20            # špatných hesel a kódů za OKNO_CHYB – pak se odmítá všechno
+MAX_CHYB = 20            # špatných hesel a kódů za OKNO_CHYB z jedné adresy klienta – pak se jí odmítá všechno
+MAX_CHYB_CELKEM = 200    # … a celkem, ať hádání z mnoha adres nejde donekonečna
 OKNO_CHYB = 10 * 60
 JMENO_RE = re.compile(r"^[a-z0-9._-]{3,32}$")
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
@@ -46,17 +48,36 @@ class Odmitnuto(Exception):
         self.status = status
 
 
-def bez_kodu(client_ip, headers):
-    """Požadavek z domácí sítě nebo z téhož počítače bez proxy – tam kód není potřeba."""
-    if any(headers.get(h) for h in HLAVICKY_PROXY):
-        return False
+def _domaci_ip(text):
     try:
-        ip = ipaddress.ip_address(str(client_ip).split("%")[0])
+        ip = ipaddress.ip_address(str(text).split("%")[0].strip("[]"))
     except ValueError:
         return False
     if ip.version == 6 and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
     return ip.is_loopback or ip.is_private
+
+
+def _domaci_host(host):
+    """Stránka otevřená přes adresu z domácí sítě (localhost, soukromá IP, local-ip.co se soukromou IP),
+    ne přes doménu – za Dockerem bez zachování adresy klienta nebo za proxy bez hlaviček by jinak
+    i požadavek z internetu vypadal jako z domácí sítě (review 2026-10-15)."""
+    try:
+        host = urllib.parse.urlsplit("//" + str(host or "").strip()).hostname or ""
+    except ValueError:
+        return False
+    if host == "localhost" or _domaci_ip(host):
+        return True
+    if host.endswith(".my.local-ip.co"):
+        return _domaci_ip(host[:-len(".my.local-ip.co")].replace("-", "."))
+    return False
+
+
+def bez_kodu(client_ip, headers):
+    """Požadavek z domácí sítě nebo z téhož počítače bez proxy – tam kód není potřeba."""
+    if any(headers.get(h) for h in HLAVICKY_PROXY):
+        return False
+    return _domaci_ip(client_ip) and _domaci_host(headers.get("Host"))
 
 
 def jmeno(text):
@@ -87,24 +108,28 @@ def _normalizuj_kod(kod):
 
 
 class Limit:
-    """Společný strop špatných hesel a kódů (správce i uživatelé)."""
+    """Společný strop špatných hesel a kódů (správce i uživatelé): na adresu klienta a celkem.
+    Volá se pod `zamek`; zdržení po chybě (`zdrz`) až mimo něj, ať se přihlášení neřadí za sebe."""
 
     def __init__(self):
-        self._chyby = []
+        self._chyby = []   # [(čas, adresa klienta)]
         self.zamek = threading.Lock()
 
-    def omezeno(self):
+    def hlidej(self, klient=""):
         ted = time.time()
-        self._chyby = [t for t in self._chyby if ted - t < OKNO_CHYB]
-        return len(self._chyby) >= MAX_CHYB
-
-    def hlidej(self):
-        if self.omezeno():
+        self._chyby = [(t, k) for t, k in self._chyby if ted - t < OKNO_CHYB]
+        if len(self._chyby) >= MAX_CHYB_CELKEM or sum(k == klient for _, k in self._chyby) >= MAX_CHYB:
             raise Odmitnuto(429, "Příliš mnoho pokusů, zkus to za 10 minut.")
 
-    def chyba(self):
-        self._chyby.append(time.time())
-        time.sleep(1)   # ponytail: zdržení na pokus, ne per-IP limit; stačí na hádání z prohlížeče
+    def chyba(self, klient=""):
+        self._chyby.append((time.time(), klient))
+
+
+def zdrz():
+    time.sleep(1)   # po špatném hesle nebo kódu, mimo zámek limitu
+
+
+_ATRAPA = soukroma.hash_hesla("atrapa")   # i neznámé jméno spočítá hash, ať z doby odpovědi nic nevyčte
 
 
 def _cookie(headers, nazev):
@@ -168,15 +193,21 @@ class Spravce:
             raise Odmitnuto(400, "Vyplň platný e-mail.")
         return j, e
 
-    def nastav(self, jmeno_, heslo, email, kod=None):
+    def nastav(self, jmeno_, heslo, email, kod=None, klient=""):
         """První nastavení. `kod` None = bez kódu (domácí síť). Vrátí obnovovací kód (ukáže se jednou)."""
         with self.limit.zamek:
             if self.hash:
                 raise Odmitnuto(409, "Správce už je nastavený, přihlas se.")
-            self.limit.hlidej()
-            if kod is not None and not hmac.compare_digest(_normalizuj_kod(kod), _normalizuj_kod(self.kod)):
-                self.limit.chyba()
-                raise Odmitnuto(403, "Kód nesedí.")
+            self.limit.hlidej(klient)
+            spatny_kod = kod is not None and not hmac.compare_digest(_normalizuj_kod(kod), _normalizuj_kod(self.kod))
+            if spatny_kod:
+                self.limit.chyba(klient)
+        if spatny_kod:
+            zdrz()
+            raise Odmitnuto(403, "Kód nesedí.")
+        with self.limit.zamek:
+            if self.hash:
+                raise Odmitnuto(409, "Správce už je nastavený, přihlas se.")
             j, e = self._over_udaje(jmeno_, email)
             over_heslo(heslo)
             obnova = nahodny_kod(4)
@@ -185,15 +216,23 @@ class Spravce:
             _LOGGER.info("správce aplikace nastavený")
             return obnova
 
-    def prihlas(self, heslo):
+    def prihlas(self, heslo, klient=""):
         with self.limit.zamek:
-            if not self.hash:
-                return False
-            self.limit.hlidej()
-            if soukroma.heslo_odpovida(str(heslo or ""), self.hash):
-                return True
-            self.limit.chyba()
-            return False
+            self.limit.hlidej(klient)
+            ok = soukroma.heslo_odpovida(str(heslo or ""), self.hash or _ATRAPA) and bool(self.hash)
+            if not ok:
+                self.limit.chyba(klient)
+        if not ok:
+            zdrz()
+        return ok
+
+    def odmitni(self, heslo, klient=""):
+        """Přihlášení pod jménem, které nikomu nepatří: stejná práce i strop jako špatné heslo."""
+        with self.limit.zamek:
+            self.limit.hlidej(klient)
+            soukroma.heslo_odpovida(str(heslo or ""), _ATRAPA)
+            self.limit.chyba(klient)
+        zdrz()
 
     def zmen(self, heslo):
         over_heslo(heslo)
@@ -212,16 +251,20 @@ class Spravce:
             self._uloz(zmeny)
             return obnova
 
-    def obnov(self, kod, heslo):
+    def obnov(self, kod, heslo, klient=""):
         """Zapomenuté heslo: obnovovací kód → nové heslo a nový kód (starý přestane platit)."""
         over_heslo(heslo)
         with self.limit.zamek:
-            self.limit.hlidej()
+            self.limit.hlidej(klient)
             ulozeny = str(soukroma.nacti_aplikaci(self.data_dir).get("obnova") or "")
             kod = _normalizuj_kod(kod)
-            if not (self.hash and ulozeny and kod) or not soukroma.heslo_odpovida(kod, ulozeny):
-                self.limit.chyba()
-                raise Odmitnuto(403, "Kód nesedí.")
+            sedi = soukroma.heslo_odpovida(kod, ulozeny or _ATRAPA) and bool(self.hash and ulozeny and kod)
+            if not sedi:
+                self.limit.chyba(klient)
+        if not sedi:
+            zdrz()
+            raise Odmitnuto(403, "Kód nesedí.")
+        with self.limit.zamek:
             obnova = nahodny_kod(4)
             self._uloz({"spravce": soukroma.hash_hesla(heslo), "obnova": soukroma.hash_hesla(_normalizuj_kod(obnova))})
             _LOGGER.info("heslo správce obnovené kódem")

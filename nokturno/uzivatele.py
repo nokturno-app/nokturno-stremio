@@ -13,12 +13,11 @@ import time
 
 from . import soukroma
 from .profily import JsonSoubor
-from .spravce import Odmitnuto, _cookie, jmeno, over_heslo, over_jmeno, set_cookie
+from .spravce import _ATRAPA, Odmitnuto, _cookie, jmeno, over_heslo, over_jmeno, set_cookie, zdrz
 
 UZIVATELE = "uzivatele.json"
 COOKIE = "nokturno_ucet"
 MAX_UZIVATELU = 100
-_ATRAPA = soukroma.hash_hesla("atrapa")
 
 
 class Uzivatele(JsonSoubor):
@@ -79,21 +78,21 @@ class Uzivatele(JsonSoubor):
         return sorted(({"jmeno": j, "blokovany": bool(u.get("b")), "t": u.get("t") or 0, "p": u.get("p") or 0}
                        for j, u in data.items() if isinstance(u, dict)), key=lambda u: u["jmeno"])
 
-    def prihlas(self, j, heslo):
+    def prihlas(self, j, heslo, klient=""):
         """True = jméno i heslo sedí a účet není zablokovaný."""
         with self.limit.zamek:
-            self.limit.hlidej()
+            self.limit.hlidej(klient)
             u = self._ucet(j)
             # i neexistující jméno spočítá hash, ať z doby odpovědi nejde poznat, kdo tu účet má
             sedi = soukroma.heslo_odpovida(str(heslo or ""), u["h"] if u else _ATRAPA)
-            if u and not u.get("b") and sedi:
-                ok = True
-            else:
-                self.limit.chyba()
-                ok = False
-        if ok:
-            self._uprav(jmeno(j), {"p": int(time.time())})
-        return ok
+            ok = bool(u and not u.get("b") and sedi)
+            if not ok:
+                self.limit.chyba(klient)
+        if not ok:
+            zdrz()
+            return False
+        self._uprav(jmeno(j), {"p": int(time.time())})
+        return True
 
     @staticmethod
     def _token(j, h):

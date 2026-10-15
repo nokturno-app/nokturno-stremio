@@ -20,12 +20,13 @@ import secrets
 import threading
 import time
 
+from . import soukroma
 from .core.lib import qr
 
 PROFILY = "profily.json"
 VYUZITI = "vyuziti.json"
 KLIC_RE = re.compile(r"^p[A-Za-z0-9_-]{22}$")
-MAX_PROFILU = 1000
+MAX_PROFILU = 3000   # víc než uzivatele.MAX_UZIVATELU × Router.MAX_PROFILU_UZIVATELE, ať uživatelé nezablokují správce
 
 
 def je_klic(text):
@@ -176,6 +177,7 @@ class Vyuziti:
         self.cesta = os.path.join(data_dir, VYUZITI) if data_dir else None
         self._zamek = threading.Lock()
         self._posledni = {}   # klíč → (soubor, čas) posledního započítaného přehrání
+        self._zapis_zamek = threading.Lock()
         self._zmeneno = False
         try:
             with open(self.cesta, encoding="utf-8") as f:
@@ -228,16 +230,10 @@ class Vyuziti:
             hranice = time.strftime("%Y-%m-%d", time.localtime(time.time() - self.DNU * 86400))
             for z in self._data.values():
                 z["d"] = {den: n for den, n in (z.get("d") or {}).items() if den >= hranice}
-            data = json.dumps(self._data)
+            data = json.loads(json.dumps(self._data))   # kopie, zápis už mimo zámek
             self._zmeneno = False
-        os.makedirs(os.path.dirname(self.cesta), exist_ok=True)
-        with open(self.cesta + ".tmp", "w", encoding="utf-8") as f:
-            f.write(data)
-        try:
-            os.chmod(self.cesta + ".tmp", 0o600)
-        except OSError:
-            pass
-        os.replace(self.cesta + ".tmp", self.cesta)
+        with self._zapis_zamek:   # údržba na pozadí a tovární nastavení
+            soukroma.zapis_json(self.cesta, data)
 
 
 def qr_svg(text):

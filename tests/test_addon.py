@@ -3772,7 +3772,7 @@ class TestSpravce(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.r = Router(Enginy(self.tmp.name, {}))
         self.r.spravce = spravce.Spravce(self.tmp.name)
-        self.hl = {"X-Nokturno": "1"}
+        self.hl = {"X-Nokturno": "1", "Host": "192.168.1.10:7140"}   # prohlížeč v domácí síti
 
     def _post(self, cesta, data, hlavicky=None):
         return self.r.post(cesta, json.dumps(data), {**self.hl, **(hlavicky or {})}, zaklad="https://x.cz",
@@ -3839,7 +3839,7 @@ class TestUctyARezimy(unittest.TestCase):
         self.r = Router(Enginy(self.tmp.name, {}))
         self.r.spravce = spravce.Spravce(self.tmp.name)
         self.r.uzivatele = uzivatele.Uzivatele(self.tmp.name, self.r.spravce.limit)
-        self.hl = {"X-Nokturno": "1"}
+        self.hl = {"X-Nokturno": "1", "Host": "192.168.1.10:7140"}   # prohlížeč v domácí síti
         odp = self._post("/spravce/nastavit", {"jmeno": "Martin", "heslo": "tajne123", "email": "m@x.cz"})
         self.obnova = odp.data["obnova"]
         self.sprava = {"Cookie": self._cookie(odp)}
@@ -4020,7 +4020,11 @@ class TestUctyARezimy(unittest.TestCase):
             self.r.spravce = spravce.Spravce(tmp)
             udaje = {"jmeno": "martin", "heslo": "tajne123", "email": "m@x.cz"}
             self.assertIn('"kod":true', self.r.route("/configure", ZAKLAD, klient="8.8.8.8").html.replace(" ", ""))
-            self.assertIn('"kod":false', self.r.route("/configure", ZAKLAD, klient="192.168.1.5").html.replace(" ", ""))
+            doma = {"Host": "192.168.1.10:7140"}
+            self.assertIn('"kod":false', self.r.route("/configure", ZAKLAD, klient="192.168.1.5", hlavicky=doma).html.replace(" ", ""))
+            # Docker bez zachování adresy klienta: soukromá adresa, ale doména v Host = z internetu
+            self.assertEqual(self._post("/spravce/nastavit", udaje, {"Host": "vps.example.cz"}, klient="172.17.0.1").status, 403)
+            self.assertEqual(self._post("/spravce/nastavit", udaje, {"X-Forwarded-Proto": "https"}, klient="127.0.0.1").status, 403)
             self.assertEqual(self._post("/spravce/nastavit", udaje, klient="8.8.8.8").status, 403)
             self.assertEqual(self._post("/spravce/nastavit", udaje, {"X-Forwarded-For": "8.8.8.8"}, klient="127.0.0.1").status, 403)
             self.assertEqual(self._post("/spravce/nastavit", {**udaje, "kod": self.r.spravce.kod.lower()}, klient="8.8.8.8").status, 200)
@@ -4102,6 +4106,32 @@ class TestUctyARezimy(unittest.TestCase):
             for _ in range(3):
                 self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "martin", "heslo": "spatne"}).status, 403)
             self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "martin", "heslo": "tajne123"}).status, 429)
+            self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "martin", "heslo": "tajne123"}, klient="192.168.1.6").status, 200)
+            self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "nikdo", "heslo": "x"}, klient="192.168.1.6").status, 403)
+
+    def test_stary_prepinac_profilu_uklada_rezim(self):
+        from nokturno import soukroma
+        self._rezim(3)
+        self._post("/aplikace", {"profily": False}, self.sprava)
+        self.assertEqual((self.r.rezim, soukroma.nacti_aplikaci(self.tmp.name)["rezim"]), (1, 1))
+        self._post("/aplikace", {"profily": True}, self.sprava)
+        self.assertEqual((self.r.rezim, soukroma.nacti_aplikaci(self.tmp.name)["rezim"]), (2, 2))
+
+    def test_overeni_z_internetu_bez_detailu(self):
+        """Ověřit přes proxy (sdílená instance): úložiště hlídaným openerem a chyba bez textu výjimky."""
+        dalo = []
+
+        class Dav:
+            def __init__(self, *a, opener=None, **_):
+                dalo.append(opener)
+
+            def check(self):
+                raise OSError("connection refused 10.0.0.1:22")
+        self.r.dav_api, self.r.sdilena = Dav, True
+        n = self._kousek({"dav1_url": "https://93.184.216.34/dav"})   # veřejná IP: filtr lokálních úložišť ji nechá
+        odp = self._post("/profil/over", {"nastaveni": n}, {**self.sprava, "Cf-Connecting-IP": "1.2.3.4"})
+        self.assertEqual(odp.data["uloziste"][0]["chyba"], "nedostupné")
+        self.assertIsNotNone(dalo[0])
 
     def test_cookie_lax_a_odhlaseni(self):
         odp = self._post("/ucet/odhlasit", {}, self.sprava)

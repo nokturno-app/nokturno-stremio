@@ -654,7 +654,9 @@ class Router:
             if kdo[0] == "spravce" and not self.spravce.uplny:
                 return chyba(403, "Nejdřív doplň jméno a e-mail správce.")
         try:
-            return self._post(cesta, telo, kdo, zaklad, klient, verejny)
+            # Ověřit z internetu (sdílená instance): úložiště jen hlídaným openerem a chyby bez detailu, jinak by
+            # přihlášený uživatel tlačítkem skenoval síť aplikace (review 2026-10-15)
+            return self._post(cesta, telo, kdo, zaklad, klient, verejny or z_proxy)
         except spravce_mod.Odmitnuto as err:
             return chyba(err.status, str(err))
         except (ValueError, TypeError, KeyError, AttributeError):
@@ -762,6 +764,9 @@ class Router:
         if cesta == "/aplikace":
             data = self._json(telo)
             zmeny = {k: bool(data[k]) for k in ("stats", "crash_reports", "profily", "stare_adresy") if k in data}
+            if "profily" in data and "rezim" not in data:   # starý přepínač: uložený `rezim` by ho po restartu přebil
+                data["rezim"] = self.PROFILY if data["profily"] and self.rezim == self.ADRESA else \
+                    self.rezim if data["profily"] else self.ADRESA
             if "rezim" in data:
                 rezim = int(data["rezim"])
                 if rezim not in (self.ADRESA, self.PROFILY, self.UCTY):
@@ -796,23 +801,27 @@ class Router:
             return chyba(400, "Nečitelný požadavek.")
         heslo = str(data.get("heslo") or "")[:201]
         jmeno = spravce_mod.jmeno(data.get("jmeno"))
+        klient = klic_klienta(klient) or "?"   # strop špatných hesel na adresu klienta
         obsazene = lambda: bool(jmeno) and self.uzivatele is not None and self.uzivatele.existuje(jmeno)
         try:
             if cesta == "/spravce/nastavit":
                 if obsazene():
                     return chyba(409, "Tohle jméno už má uživatel.")
                 kod = None if spravce_mod.bez_kodu(klient, headers) else str(data.get("kod") or "")
-                obnova = self.spravce.nastav(jmeno, heslo, data.get("email"), kod=kod)
+                obnova = self.spravce.nastav(jmeno, heslo, data.get("email"), kod=kod, klient=klient)
                 return Odpoved(data={"ok": True, "obnova": obnova}, hlavicky=[("Set-Cookie", self.spravce.cookie(https))])
             if cesta in ("/ucet/prihlasit", "/spravce/prihlasit"):
                 if not jmeno or jmeno == spravce_mod.jmeno(self.spravce.jmeno):
-                    if self.spravce.prihlas(heslo):
+                    if self.spravce.prihlas(heslo, klient):
                         return Odpoved(data={"ok": True}, hlavicky=[("Set-Cookie", self.spravce.cookie(https))])
-                elif self.rezim == self.UCTY and self.uzivatele is not None and self.uzivatele.prihlas(jmeno, heslo):
-                    return Odpoved(data={"ok": True}, hlavicky=[("Set-Cookie", self.uzivatele.cookie(jmeno, https))])
+                elif self.rezim == self.UCTY and self.uzivatele is not None:
+                    if self.uzivatele.prihlas(jmeno, heslo, klient):
+                        return Odpoved(data={"ok": True}, hlavicky=[("Set-Cookie", self.uzivatele.cookie(jmeno, https))])
+                else:
+                    self.spravce.odmitni(heslo, klient)   # jméno správce nejde poznat z doby odpovědi
                 return chyba(403, "Jméno nebo heslo nesedí.")
             if cesta == "/ucet/obnovit":
-                obnova = self.spravce.obnov(data.get("kod"), heslo)
+                obnova = self.spravce.obnov(data.get("kod"), heslo, klient=klient)
                 return Odpoved(data={"ok": True, "obnova": obnova}, hlavicky=[("Set-Cookie", self.spravce.cookie(https))])
             if cesta == "/spravce/udaje":
                 if not self.spravce.prihlaseny(headers):

@@ -186,7 +186,7 @@ def potrebuje_heslo(cesta, router):
     if not getattr(router, "heslo", ""):   # getattr: zkušební směrovače v testech heslo nemají
         return False
     return bool(router._formular(cesta) or cesta in Router.PROFILY_CESTY or cesta in Router.SPRAVA
-                or cesta == Router.OVERENI)
+                or cesta == Router.OVERENI or cesta.startswith(("/spravce/", "/ucet/")))
 
 
 def heslo_sedi(hlavicka, heslo):

@@ -21,6 +21,7 @@ import hmac
 import json
 import os
 import re
+import tempfile
 import threading
 import urllib.parse
 
@@ -100,17 +101,29 @@ def nacti_aplikaci(data_dir):
         return {}
 
 
-def uloz_aplikaci(data_dir, zmeny, smazat=()):
-    data = {k: v for k, v in {**nacti_aplikaci(data_dir), **zmeny}.items() if k not in smazat}
-    os.makedirs(data_dir, exist_ok=True)
-    cesta = os.path.join(data_dir, APLIKACE)
-    with open(cesta + ".tmp", "w", encoding="utf-8") as f:
-        json.dump(data, f)
+_APLIKACE_ZAMEK = threading.Lock()   # přečíst–změnit–zapsat najednou: souběžné uložení by změnu ztratilo
+
+
+def zapis_json(cesta, data):
+    """Atomický zápis s právy 0600 přes vlastní dočasný soubor (souběžné zápisy si ho nepřepíšou)."""
+    os.makedirs(os.path.dirname(cesta) or ".", exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(cesta) + ".", dir=os.path.dirname(cesta) or ".")
     try:
-        os.chmod(cesta + ".tmp", 0o600)   # nese hash hesla k nastavení
-    except OSError:
-        pass   # Windows / FAT
-    os.replace(cesta + ".tmp", cesta)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:   # mkstemp zakládá rovnou s právy 0600
+            json.dump(data, f)
+        os.replace(tmp, cesta)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def uloz_aplikaci(data_dir, zmeny, smazat=()):
+    with _APLIKACE_ZAMEK:
+        data = {k: v for k, v in {**nacti_aplikaci(data_dir), **zmeny}.items() if k not in smazat}
+        zapis_json(os.path.join(data_dir, APLIKACE), data)   # nese hash hesla správce
     return data
 
 

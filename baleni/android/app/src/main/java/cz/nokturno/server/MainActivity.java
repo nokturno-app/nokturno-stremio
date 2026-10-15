@@ -214,15 +214,22 @@ public class MainActivity extends Activity {
     }
 
     private static String mistniIp() {
+        // Wi-Fi a ethernet mají přednost: adresa mobilních dat (rmnet, ccmni…, často 10.x) nebo VPN
+        // je z jiného zařízení v domácí síti nedosažitelná a doplněk na TV se pak neukázal (Samsung TV, 2026-10-11)
+        String zaloha = null;
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (ni.isLoopback() || !ni.isUp()) continue;
+                String jmeno = ni.getName() == null ? "" : ni.getName();
+                boolean domaci = jmeno.startsWith("wlan") || jmeno.startsWith("eth") || jmeno.startsWith("swlan");
                 for (InetAddress a : Collections.list(ni.getInetAddresses())) {
-                    if (a instanceof Inet4Address && a.isSiteLocalAddress()) return a.getHostAddress();
+                    if (!(a instanceof Inet4Address) || !a.isSiteLocalAddress()) continue;
+                    if (domaci) return a.getHostAddress();
+                    if (zaloha == null) zaloha = a.getHostAddress();
                 }
             }
         } catch (Exception ignored) {
         }
-        return null;
+        return zaloha;
     }
 }

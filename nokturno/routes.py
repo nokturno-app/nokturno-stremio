@@ -1305,13 +1305,15 @@ class Router:
         je_profil = profily.je_klic(kousek or "")
         if kousek and not je_profil and not formular and not self.stare_povolene:
             # převod staré adresy na profil (`/configure`) projde, ostatní ne
-            return self._odmitni_doplnek(zbytek, "Adresy s nastavením jsou v téhle aplikaci vypnuté. "
-                                                 f"Ulož si nastavení jako profil na {zaklad}/configure", zaklad)
+            text = ("Adresy s nastavením sú v tejto aplikácii vypnuté. Ulož si nastavenie ako profil na " if jazyk == "sk" else
+                    "Adresy s nastavením jsou v téhle aplikaci vypnuté. Ulož si nastavení jako profil na ")
+            return self._odmitni_doplnek(zbytek, text + zaklad + "/configure", zaklad)
         options = self._nastaveni(kousek) if kousek else None
         if je_profil and options is not None and not formular:
             vlastnik = (self.profily.zaznam(kousek) or {}).get("o")
             if vlastnik and self.uzivatele is not None and self.uzivatele.blokovany(vlastnik):
-                return self._odmitni_doplnek(zbytek, "Účet je zablokovaný správcem aplikace.", zaklad)
+                return self._odmitni_doplnek(zbytek, "Účet je zablokovaný správcom aplikácie." if jazyk == "sk" else
+                                             "Účet je zablokovaný správcem aplikace.", zaklad)
             if zbytek.startswith(self.CESTY_DOPLNKU):
                 self.vyuziti.aktivita(kousek, prehrani=zbytek[len("/play/"):] if zbytek.startswith("/play/") else None)
         kdo = (lambda: self.kdo(hlavicky or {}, z_proxy)) if sprava is None else (lambda: ("spravce", "") if sprava else (None, ""))

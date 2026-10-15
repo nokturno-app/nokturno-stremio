@@ -1519,7 +1519,8 @@ class TestSlovencina(unittest.TestCase):
     def test_adresa_doplnku_nenese_jazyk(self):
         for jazyk in ("cs", "sk"):
             html = self.html(f"/configure?lang={jazyk}")
-            self.assertIn('ZAKLAD_DOPLNKU + "/c/" + profil + "/manifest.json" : "";', html)
+            self.assertIn('ZAKLAD_DOPLNKU + "/c/" + kousek() + "/manifest.json" : "";', html)
+            self.assertIn('profil ? ZAKLAD_DOPLNKU + "/c/" + profil + "/manifest.json"', html)
             self.assertIn(f'const ZAKLAD = "{ZAKLAD}";', html)
 
     def test_manifest_zustava_cesky_a_lang_ho_nerozbije(self):
@@ -2293,8 +2294,8 @@ class TestStylFormulare(unittest.TestCase):
         import re
         for jmeno in ("configure.html", "configure.sk.html"):
             html = (ROOT / "nokturno" / "static" / jmeno).read_text(encoding="utf-8")
-            # hidden (volba katalogů) se nezobrazuje, styl nepotřebuje
-            typy = set(re.findall(r'<input type="([a-z]+)"', html)) - {"button", "checkbox", "submit", "hidden"}
+            # hidden (volba katalogů) se nezobrazuje, styl nepotřebuje; radio (režim aplikace) styluje `.prepinac input`
+            typy = set(re.findall(r'<input type="([a-z]+)"', html)) - {"button", "checkbox", "submit", "hidden", "radio"}
             selektor = re.search(r"^\s*(input\[type=[^{]+)\{", html, re.M).group(1)
             stylovane = set(re.findall(r"input\[type=([a-z]+)\]", selektor))
             self.assertEqual(typy - stylovane, set(), f"{jmeno}: input bez stylu")
@@ -3620,7 +3621,9 @@ class TestProfily(unittest.TestCase):
         st = ROOT / "nokturno" / "static"
         for jm in ("configure.html", "configure.sk.html"):
             t = (st / jm).read_text(encoding="utf-8")
-            for s in ("__PROFIL__", 'id="qr"', 'id="ulozit"', 'id="qr-okno"'):
+            for s in ("__PROFIL__", 'id="qr"', 'id="ulozit"', 'id="qr-okno"', 'id="spravce-email"', 'id="obnova-kod"',
+                      'id="prihlas-jmeno"', 'id="app-uzivatele"', 'id="tovarni-btn"', 'name="app-rezim"', '"/profil/over"',
+                      "sHesly(nastaveni())", 'id="cizi-profil"'):
                 self.assertIn(s, t, (jm, s))
         for jm in ("instalace.html", "instalace.sk.html"):
             t = (st / jm).read_text(encoding="utf-8")

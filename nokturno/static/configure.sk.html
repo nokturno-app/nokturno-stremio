@@ -373,9 +373,9 @@
       <div class="karta" id="panel-dav" role="tabpanel" aria-labelledby="tab-dav">
         <div class="karta-hlava">
           <h3>Vlastné úložisko</h3>
-          <span class="stitek doporuceno">Hlavný zdroj · až 3 · WebDAV</span>
+          <span class="stitek doporuceno">Hlavný zdroj · až 3 · WebDAV, SMB</span>
         </div>
-        <p>Tvoje vlastné filmy a seriály na NAS, Nextcloude alebo serveri s WebDAV. Nokturno prejde priečinky a súbory priradí k titulom podľa názvu súboru a priečinka nad ním („Sherlock/S01E02.mkv“).</p>
+        <p>Tvoje vlastné filmy a seriály na NAS, Nextcloude alebo serveri s WebDAV či zdieľanom priečinku SMB. Nokturno prejde priečinky a súbory priradí k titulom podľa názvu súboru a priečinka nad ním („Sherlock/S01E02.mkv“).</p>
         <div class="poznamka">
           Súbor z úložiska chce heslo, preto ho prehrávaču odovzdáva táto aplikácia. Úložisko teda stačí dosiahnuteľné z aplikácie. Heslo do Stremia neodchádza.
         </div>
@@ -385,7 +385,7 @@
             <label class="pole"><span>Názov (zobrazí sa pri streame)</span>
               <input type="text" name="dav1_name" spellcheck="false" placeholder="napríklad NAS"></label>
             <label class="pole"><span>Adresa priečinka</span>
-              <input type="url" name="dav1_url" autocapitalize="off" spellcheck="false" placeholder="https://…"></label>
+              <input type="url" name="dav1_url" autocapitalize="off" spellcheck="false" placeholder="https://… alebo smb://…"></label>
             <label class="pole"><span>Používateľské meno</span>
               <input type="text" name="dav1_username" autocapitalize="off" spellcheck="false"></label>
             <label class="pole"><span>Heslo</span>
@@ -399,7 +399,7 @@
             <label class="pole"><span>Názov (zobrazí sa pri streame)</span>
               <input type="text" name="dav2_name" spellcheck="false" placeholder="napríklad NAS"></label>
             <label class="pole"><span>Adresa priečinka</span>
-              <input type="url" name="dav2_url" autocapitalize="off" spellcheck="false" placeholder="https://…"></label>
+              <input type="url" name="dav2_url" autocapitalize="off" spellcheck="false" placeholder="https://… alebo smb://…"></label>
             <label class="pole"><span>Používateľské meno</span>
               <input type="text" name="dav2_username" autocapitalize="off" spellcheck="false"></label>
             <label class="pole"><span>Heslo</span>
@@ -413,7 +413,7 @@
             <label class="pole"><span>Názov (zobrazí sa pri streame)</span>
               <input type="text" name="dav3_name" spellcheck="false" placeholder="napríklad NAS"></label>
             <label class="pole"><span>Adresa priečinka</span>
-              <input type="url" name="dav3_url" autocapitalize="off" spellcheck="false" placeholder="https://…"></label>
+              <input type="url" name="dav3_url" autocapitalize="off" spellcheck="false" placeholder="https://… alebo smb://…"></label>
             <label class="pole"><span>Používateľské meno</span>
               <input type="text" name="dav3_username" autocapitalize="off" spellcheck="false"></label>
             <label class="pole"><span>Heslo</span>
@@ -429,7 +429,7 @@
           <summary>Ako na to – adresa, heslo, ako pomenovať súbory</summary>
           <div class="obsah">
             <ol>
-              <li>Adresa je priečinok na WebDAV, napríklad <code>https://nas.example.cz/remote.php/dav/files/meno/Video/</code> (Nextcloud) alebo <code>https://server:10000/</code>. Tvar <code>davs://</code> z Kodi funguje tiež.</li>
+              <li>Adresa je priečinok na WebDAV, napríklad <code>https://nas.example.cz/remote.php/dav/files/meno/Video/</code> (Nextcloud) alebo <code>https://server:10000/</code>. Tvar <code>davs://</code> z Kodi funguje tiež. Zdieľaný priečinok SMB (Windows, Samba na NAS) má tvar <code>smb://nas/Video/</code>, funguje len z aplikácie v domácej sieti.</li>
               <li>Meno a heslo sú tie, ktorými sa k úložisku prihlasuješ. Zostanú len v adrese doplnku; pri prehratí ich pošle tvoj prehrávač priamo úložisku, takže súbor netečie cez tento server.</li>
               <li>Súbory pomenuj ako zvyčajne: <code>Pelisky (1999).mkv</code>, alebo priečinok <code>Sherlock/Season 1/S01E02.mkv</code>. Nový súbor sa zobrazí najneskôr do hodiny.</li>
             </ol>
@@ -935,7 +935,7 @@
       <summary>Aký je rozdiel medzi zdrojmi?</summary>
       <div class="obsah">
         <ul>
-          <li><strong>Vlastné úložisko</strong> – tvoje súbory na NAS, v Nextcloude alebo na serveri s WebDAV. Hlavný zdroj, hrá len v aplikácii, nie v prehliadači.</li>
+          <li><strong>Vlastné úložisko</strong> – tvoje súbory na NAS, v Nextcloude, na serveri s WebDAV alebo v zdieľanom priečinku SMB. Hlavný zdroj, hrá len v aplikácii, nie v prehliadači.</li>
           <li><strong>WebShare</strong> – česká úschovňa súborov, potrebuje platené VIP.</li>
           <li><strong>Sosáč</strong> – ručne poskladaný katalóg českých filmov a seriálov s dabingom a titulkami, prehráva cez Streamuj.tv.</li>
           <li><strong>Sledujteto</strong> – česká úschovňa s veľkým výberom, hľadá cez tvoj účet a prehráva s Premium.</li>

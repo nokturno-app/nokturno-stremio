@@ -10,6 +10,7 @@ stejný vzor, jakým dnes integrace pro Home Assistant pouští jádro v executo
 import argparse
 import base64
 import logging
+import mimetypes
 import os
 import re
 import shutil
@@ -24,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .config import decode, fingerprint, from_environ, sources_summary
 from .katalogy import Katalogy
-from .core.lib import keepalive
+from .core.lib import keepalive, smbfs
 from .core.lib.dash_api import DashApi
 from .core.lib.tmdb_api import TmdbApi
 from .identita import Identita
@@ -298,7 +299,11 @@ class Handler(BaseHTTPRequestHandler):
 
         Přeposílá `Range`, takže přetáčení funguje a nic se nestahuje celé dopředu.
         Heslo ani adresa úložiště klientovi neodejdou, dostane jen data.
+        Soubor ze SMB (`SmbFile`, HTTP adresu nemá) pošle `_proxy_smb`.
         """
+        if hasattr(url, "chunks"):
+            self._proxy_smb(url)
+            return
         pozadavek = dict(hlavicky)
         for jmeno in ("Range", "If-Range"):
             if self.headers.get(jmeno):
@@ -350,6 +355,44 @@ class Handler(BaseHTTPRequestHandler):
                     # přehrávač přestal číst déle než `timeout` (pauza, plný buffer) – jako zavřené spojení
                     self.close_connection = True
                     return
+
+    def _proxy_smb(self, soubor):
+        """Soubor z vlastního úložiště na SMB po kusech (`SmbFile.chunks`) s `Range`, ať jde přetáčet."""
+        try:
+            velikost = soubor.size()
+        except Exception as err:  # noqa: BLE001 – síť, SMB, přihlášení
+            _LOGGER.info("úložiště neodpovídá: %s", err)
+            self._posli(Odpoved(status=502, text="Úložiště neodpovídá."))
+            return
+        try:
+            rozsah = smbfs.parse_range(self.headers.get("Range"), velikost)
+        except ValueError:
+            self.send_response(416)
+            self._odeslano = True
+            self.send_header("Content-Range", f"bytes */{velikost}")
+            self.send_header("Content-Length", "0")
+            self._cors()
+            self.end_headers()
+            return
+        start, konec = rozsah or (0, velikost - 1)
+        self.send_response(206 if rozsah else 200)
+        self._odeslano = True
+        self.send_header("Content-Type", mimetypes.guess_type(soubor.name)[0] or "application/octet-stream")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(max(0, konec - start + 1)))
+        if rozsah:
+            self.send_header("Content-Range", f"bytes {start}-{konec}/{velikost}")
+        self._cors()
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+        try:
+            for kus in soubor.chunks(start, konec):
+                self.wfile.write(kus)
+                self._zapsano += len(kus)
+        except Exception as err:  # noqa: BLE001 – přehrávač zavřel spojení, SMB přestalo posílat
+            _LOGGER.info("soubor ze SMB přerušen: %s", err)
+            self.close_connection = True
 
     def _posli(self, odpoved):
         self._utok = getattr(odpoved, "utok", None)

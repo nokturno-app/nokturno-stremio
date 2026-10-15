@@ -1282,6 +1282,51 @@ class TestVlastniUloziste(unittest.TestCase):
                 s.shutdown()
                 s.server_close()
 
+    def test_proxy_smb_s_range(self):
+        """P23: soubor ze SMB nemá HTTP adresu – aplikace ho posílá sama po kusech, s `Range`."""
+        import threading
+        import urllib.error
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+        from nokturno.core.lib import smbfs
+        from nokturno.routes import Odpoved
+        from nokturno.server import Handler
+
+        DATA = bytes(range(256)) * 40
+
+        class Backend:
+            def read(self, path, offset, length):
+                return DATA[offset:offset + length]
+
+            def size(self, path):
+                return len(DATA)
+
+        soubor = smbfs.SmbFile(Backend(), "Filmy/a.mkv")
+
+        class Smerovac:
+            def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False, **_):
+                return Odpoved(proxy=(soubor, {}))
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        srv.router = Smerovac()
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        zaklad = f"http://127.0.0.1:{srv.server_address[1]}"
+        try:
+            with urllib.request.urlopen(f"{zaklad}/c/abc/play/x", timeout=5) as resp:
+                self.assertEqual((resp.status, resp.headers["Content-Type"]), (200, "video/x-matroska"))
+                self.assertEqual(resp.read(), DATA)
+            req = urllib.request.Request(f"{zaklad}/c/abc/play/x", headers={"Range": "bytes=100-199"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                self.assertEqual(resp.status, 206)
+                self.assertEqual(resp.headers["Content-Range"], f"bytes 100-199/{len(DATA)}")
+                self.assertEqual(resp.read(), DATA[100:200])
+            req = urllib.request.Request(f"{zaklad}/c/abc/play/x", headers={"Range": f"bytes={len(DATA)}-"})
+            with self.assertRaises(urllib.error.HTTPError) as err:
+                urllib.request.urlopen(req, timeout=5)
+            self.assertEqual(err.exception.code, 416)
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
     def test_nedostupny_soubor_se_vubec_nenabidne(self):
         """Bez hlaviček by stream stejně neodehrál — lepší ho neukázat než nabídnout mrtvý."""
         r = router()

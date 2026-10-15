@@ -379,6 +379,44 @@ def fingerprint(options):
     return hashlib.sha256(encode(options).encode("ascii")).hexdigest()[:16]
 
 
+# Tajné hodnoty profilu → pole účtu, ke kterému patří (první pole musí být vyplněné). Formulář tajné
+# hodnoty nedostane, ani správce, a prázdné pole při uložení a ověření znamená „beze změny“ jen
+# u nezměněného účtu. Jinak by držitel klíče přesměroval `dav1_url` na svůj server a aplikace mu
+# heslo poslala v Basic auth (Discord „Bezpecnost profilov“, 2026-10-15).
+TAJNA = {
+    "ws_password": ("ws_username",),
+    "streamuj_password": ("streamuj_username",),
+    "st_password": ("st_email",),
+    "fs_password": ("fs_username", "fs_provider"),
+    "pt_password": ("pt_email",),
+    **{f"dav{n}_password": (f"dav{n}_url", f"dav{n}_username") for n in (1, 2, 3)},
+    "lastfm_key": (),
+}
+
+
+def _text(hodnota):
+    return str(hodnota or "").strip()
+
+
+def bez_hesel(options):
+    """→ (nastavení bez tajných hodnot, seřazená pole, která mají hodnotu uloženou)."""
+    ulozena = sorted(k for k in TAJNA if _text(options.get(k)))
+    return {k: v for k, v in options.items() if k not in TAJNA}, ulozena
+
+
+def dopln_hesla(nove, stare):
+    """Prázdná tajná pole z formuláře doplní z uloženého profilu, jen když se u účtu nic nezměnilo."""
+    out = dict(nove)
+    for tajne, ucet in TAJNA.items():
+        if _text(out.get(tajne)) or not _text(stare.get(tajne)):
+            continue
+        if ucet and not _text(out.get(ucet[0])):
+            continue
+        if all(_text(out.get(p)) == _text(stare.get(p)) for p in ucet):
+            out[tajne] = stare[tajne]
+    return out
+
+
 NAZVY_ZDROJU = {"luna": "Luna", "sosac": "Sosáč", "webshare": "WebShare",
                 "hellspy": "HellSpy", "sledujteto": "Sledujteto", "fastshare": "FastShare",
                 "prehrajto": "Přehraj.to", "cztor": "CZtor", "storage": "vlastní úložiště"}

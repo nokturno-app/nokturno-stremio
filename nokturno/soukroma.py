@@ -100,8 +100,8 @@ def nacti_aplikaci(data_dir):
         return {}
 
 
-def uloz_aplikaci(data_dir, zmeny):
-    data = {**nacti_aplikaci(data_dir), **zmeny}
+def uloz_aplikaci(data_dir, zmeny, smazat=()):
+    data = {k: v for k, v in {**nacti_aplikaci(data_dir), **zmeny}.items() if k not in smazat}
     os.makedirs(data_dir, exist_ok=True)
     cesta = os.path.join(data_dir, APLIKACE)
     with open(cesta + ".tmp", "w", encoding="utf-8") as f:

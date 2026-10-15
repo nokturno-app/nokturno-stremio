@@ -62,6 +62,7 @@ from .core.lib.storage_api import SLOTS, StorageApi
 from .core.lib.cztor_api import CztorError
 from .core.lib import mycat
 from . import config, cztor, mapping, profily, sit, soukroma
+from . import spravce as spravce_mod
 from .enginy import PrilisMnohoNovych
 from .katalogy import KONCERTY
 from .identita import Identita
@@ -427,19 +428,50 @@ class Router:
         self.povolena = None   # soukroma.Povolena = soukromá instance (server.vytvor_server)
         data_dir = getattr(enginy, "data_dir", None)
         self.profily = profily.Profily(data_dir) if data_dir else None
+        self.vyuziti = profily.Vyuziti(data_dir)   # poslední aktivita a počet přehrání profilů (pro správce)
         self.pady = None       # pady.Pady, kvůli přepínači na /configure
 
     # --- soukromá instance a volby aplikace --------------------------------
     STRANKY = ("", "/", "/configure", "/configure/", "/check")
-    # sdílená instance (`"sdilena": true`): z internetu i formulář a uložení profilu, pro kamarády;
-    # včetně výběru, přejmenování a mazání profilů; povolování a aktualizace dál jen mimo proxy
+    # sdílená instance (`"sdilena": true`): z internetu i formulář, přihlášení a profily (podle režimu
+    # a oprávnění níž); povolování a aktualizace dál jen pro správce
     sdilena = False
-    profily_vypnute = False   # NOKTURNO_PROFILY=0: starý režim, adresa nese celé nastavení
+    # režim aplikace (`aplikace.json` → `rezim`, volí správce v sekci Aplikace, od 11.0.0):
+    # 1 = adresa nese celé nastavení (bez profilů), 2 = profily spravuje správce, 3 = uživatelské účty
+    ADRESA, PROFILY, UCTY = 1, 2, 3
+    rezim = PROFILY
+    rezim_vychozi = PROFILY   # z prostředí (NOKTURNO_PROFILY=0 → ADRESA), kam vrací tovární nastavení
+    stare_adresy = None       # adresy `/c/eyJ…`: None = podle režimu (vypnuté jen v režimu 3), jinak volba správce
     heslo = ""                # NOKTURNO_HESLO: heslo k formuláři a profilům (viz server.potrebuje_heslo)
     spravce = None            # spravce.Spravce (vytvor_server); None = jako do 9.11: správce = požadavek mimo proxy
-    SPRAVA = ("/povolit", "/aktualizace", "/aplikace")   # POST jen pro přihlášeného správce
+    uzivatele = None          # uzivatele.Uzivatele (vytvor_server); bez nich se v režimu 3 nikdo kromě správce nepřihlásí
+    # POST jen pro přihlášeného správce
+    SPRAVA = ("/povolit", "/aktualizace", "/aplikace", "/profil/predat", "/tovarni",
+              "/uzivatele", "/uzivatele/pridat", "/uzivatele/heslo", "/uzivatele/blokovat", "/uzivatele/smazat")
     FORMULAR = ("/configure", "/configure/", "/check")
     PROFILY_CESTY = ("/profil", "/profily", "/profil/jmeno", "/profil/smazat")
+    OVERENI = "/profil/over"   # Ověřit účet z formuláře (hesla v těle, ne v adrese)
+    MAX_PROFILU_UZIVATELE = 20
+    TOVARNI_SLOVA = ("SMAZAT", "ZMAZAŤ")
+
+    @property
+    def profily_vypnute(self):
+        """Režim 1 (NOKTURNO_PROFILY=0): adresa nese celé nastavení, profily se nezakládají."""
+        return self.rezim == self.ADRESA
+
+    @profily_vypnute.setter
+    def profily_vypnute(self, ano):
+        if ano:
+            self.rezim = self.ADRESA
+        elif self.rezim == self.ADRESA:
+            self.rezim = self.PROFILY
+
+    @property
+    def stare_povolene(self):
+        """Fungují adresy s nastavením (`/c/eyJ…`)? V režimu 1 vždy, jinak podle volby správce."""
+        if self.rezim == self.ADRESA:
+            return True
+        return self.stare_adresy if self.stare_adresy is not None else self.rezim != self.UCTY
 
     def _formular(self, cesta):
         if cesta in ("/configure", "/configure/") or cesta.startswith("/cztor/"):
@@ -458,11 +490,41 @@ class Router:
     def _zaklad_doplnku(self, zaklad):
         return self.public_url or tls.https_zaklad(zaklad, self.https_port) or zaklad
 
+    # --- kdo se ptá a co smí -------------------------------------------------
+    def kdo(self, headers, z_proxy):
+        """("spravce", jméno) / ("uzivatel", jméno) / (None, "")."""
+        if self.spravce is None:   # testy a chování do 9.11: správce = požadavek mimo proxy
+            return ("spravce", "") if not z_proxy else (None, "")
+        if self.spravce.prihlaseny(headers):
+            return "spravce", self.spravce.jmeno
+        if self.rezim == self.UCTY and self.uzivatele is not None:
+            jmeno = self.uzivatele.prihlaseny(headers)
+            if jmeno:
+                return "uzivatel", jmeno
+        return None, ""
+
     def sprava(self, headers, z_proxy):
         """Smí požadavek do sekce Aplikace a k seznamu všech profilů?"""
-        if self.spravce is None:
-            return not z_proxy
-        return self.spravce.prihlaseny(headers)
+        return self.kdo(headers, z_proxy)[0] == "spravce"
+
+    def _smi_zalozit(self, kdo):
+        """Zakládat profily: správce, v režimu 3 i přihlášený uživatel."""
+        return kdo[0] == "spravce" or (kdo[0] == "uzivatel" and self.rezim == self.UCTY)
+
+    def _smi_profil(self, zaznam, kdo):
+        """Vidět a měnit uložený profil: správce, v režimu 3 i jeho vlastník. Samotný klíč nestačí."""
+        if zaznam is None:
+            return False
+        return kdo[0] == "spravce" or (kdo[0] == "uzivatel" and self.rezim == self.UCTY
+                                        and (zaznam.get("o") or "") == kdo[1])
+
+    def _smi_formular(self, kousek, kdo):
+        """Smí formulář ukázat nastavení (a ověřovat účty)? Stará adresa ano – návštěvník ho drží v adrese."""
+        if profily.je_klic(kousek or ""):
+            return self._smi_profil(self.profily.zaznam(kousek) if self.profily else None, kdo)
+        if kousek:
+            return True
+        return self.rezim == self.ADRESA or self._smi_zalozit(kdo)
 
     def _soukroma(self, cesta, z_proxy):
         """Na soukromé instanci: cesty doplňku jen s povoleným otiskem, ostatní jen mimo proxy.
@@ -501,7 +563,8 @@ class Router:
         return {"soukroma": self.povolena is not None, "aktualizace": bool(self.UPDATE_URL),
                 "stats": bool(self.statistiky and self.statistiky.zapnuto),
                 "crash_reports": bool(self.pady and self.pady.zapnuto),
-                "rezim_profily": not self.profily_vypnute, "ma_heslo": bool(self.heslo)}
+                "rezim_profily": not self.profily_vypnute, "ma_heslo": bool(self.heslo),
+                "rezim": self.rezim, "stare_adresy": self.stare_povolene, "ucty": self.uzivatele is not None}
 
     def nastav_aplikaci(self, volby):
         if "stats" in volby and self.statistiky is not None:
@@ -510,29 +573,94 @@ class Router:
             self.pady.zapnuto = bool(volby["crash_reports"])
         if "profily" in volby:
             self.profily_vypnute = not volby["profily"]
+        if volby.get("rezim") in (self.ADRESA, self.PROFILY, self.UCTY):
+            self.rezim = volby["rezim"]
+        if "stare_adresy" in volby:
+            self.stare_adresy = None if volby["stare_adresy"] is None else bool(volby["stare_adresy"])
         if "heslo" in volby:
             self.heslo = str(volby["heslo"] or "")
 
-    def post(self, cesta, telo, headers, zaklad=""):
-        """POST jen z formuláře mimo proxy. Vlastní hlavička `X-Nokturno` vynutí u cizího webu
-        preflight, který neprojde (CORS tu není), takže jiná stránka v prohlížeči majitele
-        nastavení nezmění."""
+    def tovarni(self):
+        """Smaže správce, uživatele, profily a využití; režim a staré adresy zpět na výchozí.
+        Statistiky, hlášení pádů, `povolena.txt` a heslo `NOKTURNO_HESLO` zůstanou."""
+        for soubor in (self.profily, self.uzivatele):
+            if soubor is not None:
+                soubor.smaz_soubor()
+        self.vyuziti.zapomen()
+        self.vyuziti.uloz()
+        if self.enginy.data_dir:
+            soukroma.uloz_aplikaci(self.enginy.data_dir, {}, smazat=("rezim", "stare_adresy", "profily"))
+        self.rezim, self.stare_adresy = self.rezim_vychozi, None
+        _LOGGER.warning("tovární nastavení: smazaný správce, uživatelé i profily")
+        if self.spravce is not None:
+            self.spravce.zapomen()
+
+    def _odhlaseni(self, https):
+        hlavicky = [("Set-Cookie", self.spravce.cookie(https, odhlasit=True))] if self.spravce is not None else []
+        if self.uzivatele is not None:
+            hlavicky.append(("Set-Cookie", self.uzivatele.cookie("", https, odhlasit=True)))
+        return hlavicky
+
+    def _seznam_profilu(self, kdo):
+        """Seznam pro formulář: správce všechny (s vlastníkem a jmény uživatelů), uživatel jen své. None = nic."""
+        seznam = self.profily.seznam()
+        if kdo[0] == "spravce":
+            out = {"profily": seznam}
+            if self.uzivatele is not None:
+                out["uzivatele"] = [u["jmeno"] for u in self.uzivatele.seznam()]
+            return out
+        if kdo[0] == "uzivatel" and self.rezim == self.UCTY:
+            return {"profily": [p for p in seznam if p["o"] == kdo[1]]}
+        return None
+
+    def _prehled_uzivatelu(self):
+        """Pro správce: počet profilů a využití (poslední aktivita, přehrání za 7 a 30 dní), ne co kdo hraje."""
+        seznam = self.profily.seznam() if self.profily is not None else []
+        out = []
+        for u in self.uzivatele.seznam():
+            klice = [p["klic"] for p in seznam if p["o"] == u["jmeno"]]
+            posledni, p7, p30 = self.vyuziti.souhrn(klice)
+            out.append({**u, "profilu": len(klice), "posledni": max(posledni, u["p"]), "prehrani7": p7, "prehrani30": p30})
+        return out
+
+    @staticmethod
+    def _json(telo):
+        """Tělo POST jako slovník; ValueError = nečitelné."""
+        data = json.loads(telo or "{}")
+        if not isinstance(data, dict):
+            raise ValueError("čekal jsem objekt")
+        return data
+
+    def post(self, cesta, telo, headers, zaklad="", klient="", verejny=False):
+        """POST jen z formuláře. Vlastní hlavička `X-Nokturno` vynutí u cizího webu preflight, který
+        neprojde (CORS tu není), takže jiná stránka v prohlížeči nastavení nezmění."""
         cesta = cesta.partition("?")[0]
         if self.profily_vypnute and cesta in self.PROFILY_CESTY:
             return chyba(404, "Profily jsou vypnuté.")
         if not headers.get("X-Nokturno"):
             return Odpoved(status=403, text="")
         z_proxy = soukroma.z_proxy(headers)
-        sprava = self.sprava(headers, z_proxy)
-        if cesta.startswith("/spravce/"):
-            return self._spravce_post(cesta, telo, zaklad)
+        if cesta.startswith(("/spravce/", "/ucet/")):
+            return self._ucet_post(cesta, telo, headers, zaklad.startswith("https"), klient)
+        kdo = self.kdo(headers, z_proxy)
         if cesta in self.SPRAVA:
-            if not sprava:
+            if kdo[0] != "spravce":
                 return Odpoved(status=403, text="")
-        elif z_proxy and not (self.sdilena and cesta in self.PROFILY_CESTY):
+        elif z_proxy and not (self.sdilena and (cesta in self.PROFILY_CESTY or cesta == self.OVERENI)):
             return Odpoved(status=403, text="")
-        if cesta in self.PROFILY_CESTY and self.spravce is not None and not self.spravce.nastaveno:
-            return chyba(403, "Nejdřív nastav heslo správce.")
+        if self.spravce is not None:
+            if not self.spravce.nastaveno and (cesta in self.PROFILY_CESTY or cesta == self.OVERENI):
+                return chyba(403, "Nejdřív nastav správce aplikace.")
+            if kdo[0] == "spravce" and not self.spravce.uplny:
+                return chyba(403, "Nejdřív doplň jméno a e-mail správce.")
+        try:
+            return self._post(cesta, telo, kdo, zaklad, klient, verejny)
+        except spravce_mod.Odmitnuto as err:
+            return chyba(err.status, str(err))
+        except (ValueError, TypeError, KeyError, AttributeError):
+            return chyba(400, "Nečitelný požadavek.")
+
+    def _post(self, cesta, telo, kdo, zaklad, klient, verejny):
         if cesta == "/povolit":
             if self.povolena is None:
                 return chyba(404, "Instance není soukromá.")
@@ -542,46 +670,89 @@ class Router:
             self.povolena.pridej(otisk)
             _LOGGER.info("povolené nastavení %s", otisk)
             return Odpoved(data={"ok": True, "otisk": otisk})
-        if cesta == "/profil":
-            if self.profily is None:
-                return chyba(404, "Profily tu nejsou.")
-            try:
-                data = json.loads(telo or "{}")
-                kousek = str(data["nastaveni"])
-            except (ValueError, TypeError, KeyError):
-                return chyba(400, "Nečitelné nastavení.")
-            options = config.decode(kousek)
+        if cesta in self.PROFILY_CESTY + (self.OVERENI, "/profil/predat") and self.profily is None:
+            return chyba(404, "Profily tu nejsou.")
+        if cesta in ("/profil", self.OVERENI):
+            data = self._json(telo)
+            options = config.decode(str(data["nastaveni"]))
             if options is None:
                 return chyba(400, "Nečitelné nastavení.")
+            klic = data.get("klic")
+            if klic:
+                zaznam = self.profily.zaznam(klic)
+                if zaznam is None:
+                    return chyba(404, "Profil neexistuje.")
+                if not self._smi_profil(zaznam, kdo):
+                    return Odpoved(status=403, text="")
+                # formulář hesla nedostal: prázdné = uložené, ale jen u nezměněného účtu
+                options = config.dopln_hesla(options, config.decode(zaznam["n"]) or {})
+            elif not (self._smi_zalozit(kdo) if cesta == "/profil" else self._smi_formular(None, kdo)):
+                return Odpoved(status=403, text="")
+            if cesta == self.OVERENI:
+                if not self.check_okno.povolit(klic_klienta(klient) or "?"):
+                    return chyba(429, "Příliš mnoho ověření za sebou, zkus to za pár minut.")
+                return self.check(config.bez_lokalnich_uloziste(options) if verejny else options, verejny=verejny)
+            vlastnik = kdo[1] if kdo[0] == "uzivatel" and not klic else ""
+            if vlastnik and sum(p["o"] == vlastnik for p in self.profily.seznam()) >= self.MAX_PROFILU_UZIVATELE:
+                return chyba(507, f"Víc než {self.MAX_PROFILU_UZIVATELE} profilů mít nejde, nějaký smaž.")
             try:
-                klic = self.profily.uloz(config.encode(options), data.get("klic"), prevod=bool(data.get("prevod")))
+                klic = self.profily.uloz(config.encode(options), klic or None, prevod=bool(data.get("prevod")),
+                                         vlastnik=vlastnik)
             except ValueError:
                 return chyba(507, "Profilů je moc, starý smaž v datové složce aplikace.")
             if self.povolena is not None:
-                self.povolena.pridej(soukroma.otisk(options))   # majitel ukládá mimo proxy = rovnou povoleno
+                self.povolena.pridej(soukroma.otisk(options))   # uložení s oprávněním = rovnou povoleno
             if data.get("jmeno") is not None:
                 self.profily.pojmenuj(klic, data["jmeno"])
             instalace = self._zaklad_doplnku(zaklad) + "/c/" + klic + "/instalace"
             return Odpoved(data={"klic": klic, "instalace": instalace, "qr": profily.qr_svg(instalace)})
-        if cesta in ("/profily", "/profil/jmeno", "/profil/smazat"):
-            # správa profilů – jen majitel (mimo proxy, s hlavičkou), seznam nese klíče = účty
-            if self.profily is None:
-                return chyba(404, "Profily tu nejsou.")
-            try:
-                data = json.loads(telo or "{}")
-                klic = str(data.get("klic") or "") if isinstance(data, dict) else ""
-            except ValueError:
-                return chyba(400, "Nečitelný požadavek.")
-            if cesta == "/profil/jmeno" and not self.profily.pojmenuj(klic, data.get("jmeno")):
-                return chyba(404, "Profil neexistuje.")
-            if cesta == "/profil/smazat" and not self.profily.smaz(klic):
-                return chyba(404, "Profil neexistuje.")
-            seznam = self.profily.seznam()
-            if not sprava:
-                # kamarád vidí jen profily, jejichž klíč zná (pamatuje si je jeho prohlížeč)
-                znam = {str(k) for k in (data.get("klice") or []) if isinstance(k, str)} | {klic}
-                seznam = [p for p in seznam if p["klic"] in znam]
-            return Odpoved(data={"profily": seznam})
+        if cesta in ("/profily", "/profil/jmeno", "/profil/smazat", "/profil/predat"):
+            data = self._json(telo)
+            klic = str(data.get("klic") or "")
+            if cesta != "/profily":
+                zaznam = self.profily.zaznam(klic)
+                if zaznam is None:
+                    return chyba(404, "Profil neexistuje.")
+                if not self._smi_profil(zaznam, kdo):
+                    return Odpoved(status=403, text="")
+                if cesta == "/profil/jmeno":
+                    self.profily.pojmenuj(klic, data.get("jmeno"))
+                elif cesta == "/profil/smazat":
+                    self.profily.smaz(klic)
+                    self.vyuziti.zapomen([klic])
+                else:   # předání (jen správce, viz SPRAVA); "" = zpět správci
+                    jmeno = spravce_mod.jmeno(data.get("jmeno"))
+                    if jmeno and (self.uzivatele is None or not self.uzivatele.existuje(jmeno)):
+                        return chyba(404, "Uživatel neexistuje.")
+                    self.profily.predej(klic, jmeno)
+            seznam = self._seznam_profilu(kdo)
+            return Odpoved(data=seznam) if seznam is not None else Odpoved(status=403, text="")
+        if cesta.startswith("/uzivatele"):
+            if self.uzivatele is None:
+                return chyba(404, "Uživatelské účty tu nejsou.")
+            data = self._json(telo)
+            jmeno, heslo = data.get("jmeno"), str(data.get("heslo") or "")[:201]
+            if cesta == "/uzivatele/pridat":
+                if self.spravce is not None and spravce_mod.jmeno(jmeno) == spravce_mod.jmeno(self.spravce.jmeno):
+                    return chyba(409, "Tohle jméno má správce.")
+                self.uzivatele.pridej(jmeno, heslo)
+            elif cesta == "/uzivatele/heslo":
+                self.uzivatele.zmen_heslo(jmeno, heslo)
+            elif cesta == "/uzivatele/blokovat":
+                self.uzivatele.blokuj(jmeno, bool(data.get("blokovat", True)))
+            elif cesta == "/uzivatele/smazat":
+                if not self.uzivatele.existuje(jmeno):
+                    return chyba(404, "Uživatel neexistuje.")
+                # napřed profily: kdyby smazání účtu nedoběhlo, nezůstanou profily bez vlastníka
+                if self.profily is not None:
+                    self.vyuziti.zapomen(self.profily.smaz_vlastnika(spravce_mod.jmeno(jmeno)))
+                self.uzivatele.smaz(jmeno)
+            return Odpoved(data={"uzivatele": self._prehled_uzivatelu()})
+        if cesta == "/tovarni":
+            if str(self._json(telo).get("potvrzeni") or "").strip().upper() not in self.TOVARNI_SLOVA:
+                return chyba(400, "Pro potvrzení opiš slovo SMAZAT.")
+            self.tovarni()
+            return Odpoved(data={"ok": True}, hlavicky=self._odhlaseni(zaklad.startswith("https")))
         if cesta == "/aktualizace":
             if not self.UPDATE_URL:
                 return chyba(404, "Aktualizace řídí zavaděč, tady neběží.")
@@ -589,51 +760,69 @@ class Router:
                 pass
             return Odpoved(data={"ok": True})
         if cesta == "/aplikace":
-            try:
-                data = json.loads(telo or "{}")
-                zmeny = {k: bool(data[k]) for k in ("stats", "crash_reports", "profily") if k in data}
-                if "heslo" in data:
-                    # prázdné = bez hesla; jinak jen hash, holé heslo se nikam neukládá
-                    heslo = str(data["heslo"] or "")
-                    if len(heslo) > 200:
-                        return chyba(400, "Heslo je moc dlouhé.")
-                    zmeny["heslo"] = soukroma.hash_hesla(heslo) if heslo else ""
-            except (ValueError, TypeError, AttributeError):
-                return chyba(400, "Nečitelné volby.")
-            nove_heslo = str(data.get("spravce_heslo") or "") if isinstance(data, dict) else ""
+            data = self._json(telo)
+            zmeny = {k: bool(data[k]) for k in ("stats", "crash_reports", "profily", "stare_adresy") if k in data}
+            if "rezim" in data:
+                rezim = int(data["rezim"])
+                if rezim not in (self.ADRESA, self.PROFILY, self.UCTY):
+                    return chyba(400, "Neznámý režim.")
+                zmeny.update(rezim=rezim, profily=rezim != self.ADRESA)   # `profily` pro návrat na starší verzi
+            if "heslo" in data:
+                # prázdné = bez hesla; jinak jen hash, holé heslo se nikam neukládá
+                heslo = str(data["heslo"] or "")
+                if len(heslo) > 200:
+                    return chyba(400, "Heslo je moc dlouhé.")
+                zmeny["heslo"] = soukroma.hash_hesla(heslo) if heslo else ""
+            nove_heslo = str(data.get("spravce_heslo") or "")
             hlavicky = []
             if nove_heslo and self.spravce is not None:
-                vadne = self.spravce.zmen(nove_heslo)
-                if vadne:
-                    return chyba(400, vadne)
+                self.spravce.zmen(nove_heslo[:201])
                 hlavicky.append(("Set-Cookie", self.spravce.cookie(zaklad.startswith("https"))))   # nový token
             soukroma.uloz_aplikaci(self.enginy.data_dir, zmeny)
             self.nastav_aplikaci(zmeny)
             return Odpoved(data=self.aplikace(), hlavicky=hlavicky)
         return chyba(404, "Nic tu není.")
 
-    def _spravce_post(self, cesta, telo, zaklad):
-        """`/spravce/nastavit` (první heslo), `/prihlasit`, `/odhlasit`."""
+    def _ucet_post(self, cesta, telo, headers, https, klient):
+        """Založení správce, jeho údaje, přihlášení a odhlášení správce i uživatelů, obnovovací kód.
+        `/spravce/prihlasit` a `/spravce/odhlasit` jsou staré názvy (nginx na kc9jri je pouští)."""
         if self.spravce is None:
             return chyba(404, "Nic tu není.")
-        https = zaklad.startswith("https")
-        if cesta == "/spravce/odhlasit":
-            return Odpoved(data={"ok": True}, hlavicky=[("Set-Cookie", self.spravce.cookie(https, odhlasit=True))])
+        if cesta in ("/ucet/odhlasit", "/spravce/odhlasit"):
+            return Odpoved(data={"ok": True}, hlavicky=self._odhlaseni(https))
         try:
-            data = json.loads(telo or "{}")
-            heslo = str(data.get("heslo") or "")[:200]
-        except (ValueError, TypeError, AttributeError):
+            data = self._json(telo)
+        except ValueError:
             return chyba(400, "Nečitelný požadavek.")
-        if cesta == "/spravce/nastavit":
-            vadne = self.spravce.nastav(heslo)
-            if vadne:
-                return chyba(403 if "pokus" in vadne else 400, vadne)
-        elif cesta == "/spravce/prihlasit":
-            if not self.spravce.prihlas(heslo):
-                return chyba(403, "Heslo nesedí.")
-        else:
-            return chyba(404, "Nic tu není.")
-        return Odpoved(data={"ok": True}, hlavicky=[("Set-Cookie", self.spravce.cookie(https))])
+        heslo = str(data.get("heslo") or "")[:201]
+        jmeno = spravce_mod.jmeno(data.get("jmeno"))
+        obsazene = lambda: bool(jmeno) and self.uzivatele is not None and self.uzivatele.existuje(jmeno)
+        try:
+            if cesta == "/spravce/nastavit":
+                if obsazene():
+                    return chyba(409, "Tohle jméno už má uživatel.")
+                kod = None if spravce_mod.bez_kodu(klient, headers) else str(data.get("kod") or "")
+                obnova = self.spravce.nastav(jmeno, heslo, data.get("email"), kod=kod)
+                return Odpoved(data={"ok": True, "obnova": obnova}, hlavicky=[("Set-Cookie", self.spravce.cookie(https))])
+            if cesta in ("/ucet/prihlasit", "/spravce/prihlasit"):
+                if not jmeno or jmeno == spravce_mod.jmeno(self.spravce.jmeno):
+                    if self.spravce.prihlas(heslo):
+                        return Odpoved(data={"ok": True}, hlavicky=[("Set-Cookie", self.spravce.cookie(https))])
+                elif self.rezim == self.UCTY and self.uzivatele is not None and self.uzivatele.prihlas(jmeno, heslo):
+                    return Odpoved(data={"ok": True}, hlavicky=[("Set-Cookie", self.uzivatele.cookie(jmeno, https))])
+                return chyba(403, "Jméno nebo heslo nesedí.")
+            if cesta == "/ucet/obnovit":
+                obnova = self.spravce.obnov(data.get("kod"), heslo)
+                return Odpoved(data={"ok": True, "obnova": obnova}, hlavicky=[("Set-Cookie", self.spravce.cookie(https))])
+            if cesta == "/spravce/udaje":
+                if not self.spravce.prihlaseny(headers):
+                    return Odpoved(status=403, text="")
+                if obsazene():
+                    return chyba(409, "Tohle jméno už má uživatel.")
+                return Odpoved(data={"ok": True, "obnova": self.spravce.udaje(jmeno, data.get("email"))})
+        except spravce_mod.Odmitnuto as err:
+            return chyba(err.status, str(err))
+        return chyba(404, "Nic tu není.")
 
     # --- adresy -----------------------------------------------------------
     @staticmethod
@@ -691,15 +880,21 @@ class Router:
                 pass
         return (STATIKA / f"{jmeno}.html").read_text(encoding="utf-8")
 
-    def configure(self, kousek, zaklad, verejny=False, jazyk="cs", klient="", z_proxy=False, sprava=None):
-        """Formulář, který vyrobí adresu s účty. Předvyplní se z adresy, na které stojí."""
+    def configure(self, kousek, zaklad, verejny=False, jazyk="cs", klient="", z_proxy=False, kdo=(None, ""), hlavicky=None):
+        """Formulář, který vyrobí adresu s účty. Předvyplní se z adresy, na které stojí – uložený profil
+        jen pro toho, kdo ho smí upravit (`_smi_formular`), a vždy bez hesel (`config.bez_hesel`)."""
         try:
             html = self._stranka("configure", jazyk)
         except OSError:
             return chyba(500, "Formulář nastavení chybí.")
-        soucasne = self._nastaveni(kousek) if kousek else None
-        if soucasne is None and self.predvyplnit and not verejny:
-            soucasne = self.enginy.vychozi_options
+        pristup = self._smi_formular(kousek, kdo)
+        je_profil = profily.je_klic(kousek or "")
+        soucasne = self._nastaveni(kousek) if kousek and pristup else None
+        ulozena = []
+        if je_profil and soucasne is not None:
+            soucasne, ulozena = config.bez_hesel(soucasne)
+        if soucasne is None and self.predvyplnit and not verejny and not kousek and kdo[0] == "spravce":
+            soucasne = self.enginy.vychozi_options   # účty z prostředí, jen správci (NOKTURNO_CONFIGURE_PREFILL)
         # hodnoty z adresy jsou od kohokoli — do <script> jen escapované (viz json_do_scriptu)
         html = html.replace("__NASTAVENI__", mapping.json_do_scriptu(soucasne or {}))
         nabidka = self.katalogy.formular(jazyk) if self.katalogy else []
@@ -709,12 +904,23 @@ class Router:
         doplnek = self._zaklad_doplnku(zaklad)
         html = html.replace("__ZAKLAD_DOPLNKU__", html_lib.escape(doplnek, quote=True))
         html = html.replace("__ZAKLAD__", html_lib.escape(zaklad, quote=True))
-        html = html.replace("__PROFIL__", kousek if profily.je_klic(kousek or "") and soucasne is not None else "")
+        html = html.replace("__PROFIL__", kousek if je_profil and soucasne is not None else "")
         html = html.replace("__VERZE__", self.verze)
         html = html.replace("__ID__", self._identita_pro_formular(soucasne, klient))
-        html = html.replace("__APLIKACE__", mapping.json_do_scriptu({**self.aplikace(), "sprava": (not z_proxy) if sprava is None else sprava,
-                                                                "spravce_nastaven": self.spravce is None or self.spravce.nastaveno,
-                                                                "profily": (not z_proxy or self.sdilena) and not self.profily_vypnute, "stary": self.profily_vypnute}))
+        role = kdo[0] or ""
+        s = self.spravce
+        html = html.replace("__APLIKACE__", mapping.json_do_scriptu({
+            **self.aplikace(), "sprava": role == "spravce",
+            "spravce_nastaven": s is None or s.nastaveno,
+            "profily": (not z_proxy or self.sdilena) and not self.profily_vypnute and self._smi_zalozit(kdo),
+            "stary": self.profily_vypnute,
+            # kdo se ptá a co smí (formulář podle toho ukáže přihlášení, cizí profil nebo nastavení)
+            "pristup": pristup, "role": role, "jmeno": kdo[1], "cizi": je_profil and role == "uzivatel" and not pristup,
+            "ulozena": ulozena,   # tajná pole s uloženou hodnotou: ve formuláři prázdná s poznámkou
+            "kontakt": s.email if s is not None and s.nastaveno else "",
+            "spravce_bez_jmena": bool(s is not None and s.nastaveno and not s.jmeno),
+            "doplnit": role == "spravce" and s is not None and not s.uplny,
+            "kod": bool(s is not None and not s.nastaveno and not spravce_mod.bez_kodu(klient, hlavicky or {}))}))
         return Odpoved(html=html)
 
     def instalace(self, kousek, zaklad, jazyk):
@@ -1044,6 +1250,13 @@ class Router:
             return chyba(502, "Zdroj vrátil prázdný odkaz.")
         return Odpoved(status=302, location=skutecna, text="")
 
+    @staticmethod
+    def _odmitni_doplnek(zbytek, text, zaklad):
+        """Odmítnutí cesty doplňku: u streamů jako jediný řádek (Stremio při 403 nic neukáže), jinak 403."""
+        if zbytek.startswith("/stream/"):
+            return Odpoved(data={"streams": [mapping.upozorneni_blokace(text, zaklad + "/configure")]})
+        return chyba(403, text)
+
     # --- rozcestník -------------------------------------------------------
     def route(self, cesta, zaklad, verejny=False, jazyk=None, klient="", aplikace="stremio", z_proxy=False,
               sprava=None, hlavicky=None):
@@ -1088,7 +1301,20 @@ class Router:
             return self.cztor_poll(urllib.parse.parse_qs(dotaz), klient)
 
         kousek, zbytek = self._rozdel(cesta)
+        formular = zbytek in ("/configure", "/configure/")
+        je_profil = profily.je_klic(kousek or "")
+        if kousek and not je_profil and not formular and not self.stare_povolene:
+            # převod staré adresy na profil (`/configure`) projde, ostatní ne
+            return self._odmitni_doplnek(zbytek, "Adresy s nastavením jsou v téhle aplikaci vypnuté. "
+                                                 f"Ulož si nastavení jako profil na {zaklad}/configure", zaklad)
         options = self._nastaveni(kousek) if kousek else None
+        if je_profil and options is not None and not formular:
+            vlastnik = (self.profily.zaznam(kousek) or {}).get("o")
+            if vlastnik and self.uzivatele is not None and self.uzivatele.blokovany(vlastnik):
+                return self._odmitni_doplnek(zbytek, "Účet je zablokovaný správcem aplikace.", zaklad)
+            if zbytek.startswith(self.CESTY_DOPLNKU):
+                self.vyuziti.aktivita(kousek, prehrani=zbytek[len("/play/"):] if zbytek.startswith("/play/") else None)
+        kdo = (lambda: self.kdo(hlavicky or {}, z_proxy)) if sprava is None else (lambda: ("spravce", "") if sprava else (None, ""))
         if kousek and options is None:
             if profily.je_klic(kousek):
                 return chyba(404, "Tohle nastavení už v aplikaci není. Ulož ho znovu na /configure")
@@ -1115,10 +1341,8 @@ class Router:
             options = config.bez_lokalnich_uloziste(options)
 
         if zbytek in ("", "/", "/configure", "/configure/"):
-            if zbytek in ("/configure", "/configure/"):
-                if sprava is None:
-                    sprava = self.sprava(hlavicky or {}, z_proxy)
-                return self.configure(kousek, zaklad, verejny, jazyk, klient, z_proxy, sprava=sprava)
+            if formular:
+                return self.configure(kousek, zaklad, verejny, jazyk, klient, z_proxy, kdo=kdo(), hlavicky=hlavicky)
             return self.uvod(zaklad, jazyk)
 
         if kousek and zbytek == "/instalace":
@@ -1134,6 +1358,8 @@ class Router:
                               f"Vyrob si adresu na {zaklad}/configure")
 
         if zbytek == "/check":
+            if je_profil and not self._smi_profil(self.profily.zaznam(kousek), kdo()):
+                return Odpoved(status=403, text="")   # uložené účty ověřuje jen ten, kdo profil smí upravit
             if not self.check_okno.povolit(klic_klienta(klient) or "?"):
                 odp = chyba(429, "Příliš mnoho ověření za sebou, zkus to za pár minut.")
                 odp.utok = ("limit", config.fingerprint(options) if kousek else None)

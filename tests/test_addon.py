@@ -3355,7 +3355,7 @@ class TestPrepinacStatistik(unittest.TestCase):
         r.pady = mock.Mock(zapnuto=True)
         odp = r.post("/aplikace", json.dumps({"stats": False}), {"X-Nokturno": "1"})
         self.assertEqual(odp.data, {"soukroma": False, "aktualizace": False, "stats": False, "crash_reports": True,
-                                    "rezim_profily": True, "ma_heslo": False})
+                                    "rezim_profily": True, "ma_heslo": False, "rezim": 2, "stare_adresy": True, "ucty": False})
         self.assertFalse(r.statistiky.zapnuto)
         self.assertEqual(soukroma.nacti_aplikaci(tmp), {"stats": False})
         self.assertEqual(r.post("/aplikace", "{}", {"X-Nokturno": "1", "Cf-Connecting-IP": "1.1.1.1"}).status, 403)
@@ -3539,26 +3539,25 @@ class TestProfily(unittest.TestCase):
         self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 200)
 
     def test_sdilena_instance_pusti_formular_ne_spravu(self):
+        """Sdílená instance pustí z internetu formulář; v režimu 2 (11.0.0) ale profily zapisuje jen správce."""
         from nokturno import soukroma
         self.r.povolena = soukroma.Povolena(self.tmp.name)
         cf = {"X-Nokturno": "1", "Cf-Connecting-IP": "1.2.3.4"}
         telo = json.dumps({"nastaveni": KOUSEK})
+        klic = self._uloz().data["klic"]   # správce mimo proxy
         # bez volby sdilena: z internetu nic
         self.assertEqual(self.r.route("/configure", ZAKLAD, z_proxy=True).status, 403)
         self.assertEqual(self.r.post("/profil", telo, cf, zaklad=ZAKLAD).status, 403)
         self.r.sdilena = True
         self.assertEqual(self.r.route("/configure", ZAKLAD, z_proxy=True).status, 200)
-        d = self.r.post("/profil", telo, cf, zaklad=ZAKLAD)
-        self.assertEqual(d.status, 200)
-        klic = d.data["klic"]
-        self.assertEqual(self.r.route(f"/c/{klic}/configure", ZAKLAD, z_proxy=True).status, 200)
+        self.assertEqual(self.r.post("/profil", telo, cf, zaklad=ZAKLAD).status, 403)   # kamarád bez přihlášení
+        html = self.r.route(f"/c/{klic}/configure", ZAKLAD, z_proxy=True).html.replace(" ", "")
+        self.assertIn('"pristup":false', html)
+        self.assertIn("constsoucasne={};", html)   # nastavení profilu cizímu nejde, ani jména účtů
         self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD, z_proxy=True).status, 200)
-        html = self.r.route("/configure", ZAKLAD, z_proxy=True).html
-        self.assertIn('"sprava": false', html)
-        self.assertIn('"profily": true', html)
-        # výběr a správa profilů jde, povolování a aktualizace ne
-        self.assertEqual(self.r.post("/profily", "{}", cf).status, 200)
-        self.assertEqual(self.r.post("/profil/jmeno", json.dumps({"klic": klic, "jmeno": "Kamarád"}), cf).status, 200)
+        self.assertIn('"sprava":false', html)
+        self.assertEqual(self.r.post("/profily", "{}", cf).status, 403)
+        self.assertEqual(self.r.post("/profil/jmeno", json.dumps({"klic": klic, "jmeno": "Kamarád"}), cf).status, 403)
         self.assertEqual(self.r.post("/povolit", KOUSEK, cf).status, 403)
         self.assertEqual(self.r.route("/aktualizace", ZAKLAD, z_proxy=True).status, 404)   # správa jen správci
 
@@ -3773,7 +3772,8 @@ class TestSpravce(unittest.TestCase):
         self.hl = {"X-Nokturno": "1"}
 
     def _post(self, cesta, data, hlavicky=None):
-        return self.r.post(cesta, json.dumps(data), {**self.hl, **(hlavicky or {})}, zaklad="https://x.cz")
+        return self.r.post(cesta, json.dumps(data), {**self.hl, **(hlavicky or {})}, zaklad="https://x.cz",
+                           klient="192.168.1.5")
 
     def _cookie(self, odp):
         return dict(odp.hlavicky)["Set-Cookie"].split(";")[0]
@@ -3787,27 +3787,30 @@ class TestSpravce(unittest.TestCase):
 
     def test_nastaveni_bez_kodu(self):
         from nokturno import spravce, soukroma
-        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "kratk"}).status, 400)
-        odp = self._post("/spravce/nastavit", {"heslo": "tajne123"})
+        udaje = {"jmeno": "martin", "email": "m@x.cz"}
+        self.assertEqual(self._post("/spravce/nastavit", {**udaje, "heslo": "kratk"}).status, 400)
+        self.assertEqual(self._post("/spravce/nastavit", {"jmeno": "martin", "heslo": "tajne123"}).status, 400)   # bez e-mailu
+        odp = self._post("/spravce/nastavit", {**udaje, "heslo": "tajne123"})
         self.assertEqual(odp.status, 200)
         self.assertIn("HttpOnly", dict(odp.hlavicky)["Set-Cookie"])
         self.assertIn("Secure", dict(odp.hlavicky)["Set-Cookie"])
         self.assertTrue(soukroma.nacti_aplikaci(self.tmp.name)["spravce"].startswith("pbkdf2$"))
         # druhé nastavení už nejde, po restartu se heslo načte
-        self.assertEqual(self._post("/spravce/nastavit", {"heslo": "jine1234"}).status, 400)
+        self.assertEqual(self._post("/spravce/nastavit", {**udaje, "heslo": "jine1234"}).status, 409)
         self.assertTrue(spravce.Spravce(self.tmp.name).nastaveno)
 
-    def test_spravce_vidi_vse_kamarad_jen_sve(self):
-        self._post("/spravce/nastavit", {"heslo": "tajne123"})
-        kamarad = self._post("/profil", {"nastaveni": KOUSEK}).data["klic"]
-        cizi = self._post("/profil", {"nastaveni": KOUSEK}).data["klic"]
-        self.assertEqual([p["klic"] for p in self._post("/profily", {"klice": [kamarad]}).data["profily"]], [kamarad])
-        self.assertEqual(self._post("/profily", {}).data["profily"], [])
-        self.assertEqual(self._post("/aplikace", {"stats": False}).status, 403)
-        self.assertEqual(self._post("/spravce/prihlasit", {"heslo": "spatne"}).status, 403)
-        cookie = self._cookie(self._post("/spravce/prihlasit", {"heslo": "tajne123"}))
+    def test_spravce_vidi_vse_kamarad_nic(self):
+        """Režim 2 od 11.0.0: profily zakládá, vidí a mění jen přihlášený správce."""
+        cookie = self._cookie(self._post("/spravce/nastavit", {"jmeno": "martin", "email": "m@x.cz", "heslo": "tajne123"}))
         sprava = {"Cookie": "x=1; " + cookie}
-        self.assertEqual({p["klic"] for p in self._post("/profily", {}, sprava).data["profily"]}, {kamarad, cizi})
+        self.assertEqual(self._post("/profil", {"nastaveni": KOUSEK}).status, 403)
+        self.assertEqual(self._post("/profily", {}).status, 403)
+        self.assertEqual(self._post("/aplikace", {"stats": False}).status, 403)
+        klic = self._post("/profil", {"nastaveni": KOUSEK}, sprava).data["klic"]
+        self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "martin", "heslo": "spatne"}).status, 403)
+        cookie = self._cookie(self._post("/ucet/prihlasit", {"jmeno": "Martin", "heslo": "tajne123"}))
+        sprava = {"Cookie": "x=1; " + cookie}
+        self.assertEqual([p["klic"] for p in self._post("/profily", {}, sprava).data["profily"]], [klic])
         self.assertEqual(self._post("/aplikace", {"stats": False}, sprava).status, 200)
         self.assertIn('"sprava":true', self.r.route("/configure", ZAKLAD, hlavicky=sprava).html.replace(" ", ""))
         # změna hesla zneplatní staré přihlášení a vydá nové
@@ -3815,6 +3818,300 @@ class TestSpravce(unittest.TestCase):
         self.assertEqual(self._post("/aplikace", {"stats": True}, sprava).status, 403)
         self.assertEqual(self._post("/aplikace", {"stats": True}, {"Cookie": nova}).status, 200)
 
+
+class TestUctyARezimy(unittest.TestCase):
+    """11.0.0: správce se jménem a e-mailem, režimy 1–3, uživatelské účty, hesla mimo formulář (Discord 2026-10-15)."""
+
+    UCTY = {"ws_username": "franta", "ws_password": "tajneWS1", "pt_email": "a@b.cz", "pt_password": "tajnePT1",
+            "dav1_url": "https://nas.local/dav", "dav1_username": "u", "dav1_password": "tajneDAV1"}
+
+    def setUp(self):
+        from nokturno.enginy import Enginy
+        from nokturno import spravce, uzivatele
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        spanek = mock.patch("nokturno.spravce.time.sleep")   # zdržení po špatném hesle testy nepotřebují
+        spanek.start()
+        self.addCleanup(spanek.stop)
+        self.r = Router(Enginy(self.tmp.name, {}))
+        self.r.spravce = spravce.Spravce(self.tmp.name)
+        self.r.uzivatele = uzivatele.Uzivatele(self.tmp.name, self.r.spravce.limit)
+        self.hl = {"X-Nokturno": "1"}
+        odp = self._post("/spravce/nastavit", {"jmeno": "Martin", "heslo": "tajne123", "email": "m@x.cz"})
+        self.obnova = odp.data["obnova"]
+        self.sprava = {"Cookie": self._cookie(odp)}
+
+    def _post(self, cesta, data, hlavicky=None, klient="192.168.1.5"):
+        return self.r.post(cesta, json.dumps(data), {**self.hl, **(hlavicky or {})}, zaklad="https://x.cz", klient=klient)
+
+    @staticmethod
+    def _cookie(odp):
+        return dict(odp.hlavicky)["Set-Cookie"].split(";")[0]
+
+    @staticmethod
+    def _kousek(nastaveni):
+        return config.encode(config.from_mapping(nastaveni))
+
+    def _profil(self, nastaveni=None, hlavicky=None, klic=None):
+        telo = {"nastaveni": self._kousek(nastaveni or self.UCTY), **({"klic": klic} if klic else {})}
+        return self._post("/profil", telo, self.sprava if hlavicky is None else hlavicky)
+
+    def _ulozene(self, klic):
+        return config.decode(self.r.profily.nacti(klic))
+
+    def _rezim(self, rezim, **navic):
+        self.assertEqual(self._post("/aplikace", {"rezim": rezim, **navic}, self.sprava).status, 200)
+
+    def _uzivatel(self, jmeno="pepa"):
+        self.assertEqual(self._post("/uzivatele/pridat", {"jmeno": jmeno, "heslo": "heslo123"}, self.sprava).status, 200)
+        return {"Cookie": self._cookie(self._post("/ucet/prihlasit", {"jmeno": jmeno, "heslo": "heslo123"}))}
+
+    def test_hesla_nejsou_ve_formulari(self):
+        klic = self._profil().data["klic"]
+        html = self.r.route(f"/c/{klic}/configure", ZAKLAD, hlavicky=self.sprava).html
+        for tajne in ("tajneWS1", "tajnePT1", "tajneDAV1"):
+            self.assertNotIn(tajne, html)   # ani správci
+        self.assertIn("franta", html)
+        self.assertIn('"ulozena":["dav1_password","pt_password","ws_password"]', html.replace(" ", ""))
+        cizi = self.r.route(f"/c/{klic}/configure", ZAKLAD).html   # jen klíč, bez přihlášení
+        self.assertNotIn("franta", cizi)
+        self.assertIn('"pristup":false', cizi.replace(" ", ""))
+
+    def test_prazdne_heslo_jen_u_nezmeneneho_uctu(self):
+        stare = config.from_mapping({**self.UCTY, "fs_username": "fs", "fs_password": "tajneFS1"})
+        nove = config.bez_hesel(stare)[0]
+        doplnene = config.dopln_hesla(nove, stare)
+        self.assertEqual([doplnene.get(k) for k in ("ws_password", "dav1_password", "fs_password")],
+                         ["tajneWS1", "tajneDAV1", "tajneFS1"])
+        for zmena, pole in (({"dav1_url": "https://utocnik.cz/dav"}, "dav1_password"), ({"dav1_username": "x"}, "dav1_password"),
+                            ({"ws_username": "jiny"}, "ws_password"), ({"fs_provider": "sdilej"}, "fs_password"),
+                            ({"pt_email": ""}, "pt_password")):
+            self.assertFalse(config.dopln_hesla({**nove, **zmena}, stare).get(pole), zmena)
+        self.assertEqual(config.dopln_hesla({**nove, "ws_password": "nove"}, stare)["ws_password"], "nove")
+
+    def test_ulozeni_bez_hesla(self):
+        klic = self._profil().data["klic"]
+        bez = {k: v for k, v in self.UCTY.items() if k not in config.TAJNA}
+        self.assertEqual(self._profil(bez, klic=klic).data["klic"], klic)
+        self.assertEqual(self._ulozene(klic)["dav1_password"], "tajneDAV1")
+        self._profil({**bez, "dav1_url": "https://utocnik.cz/dav"}, klic=klic)
+        ulozene = self._ulozene(klic)
+        self.assertFalse(ulozene.get("dav1_password"))   # přesměrované úložiště heslo nedostane
+        self.assertEqual(ulozene["ws_password"], "tajneWS1")
+        self.assertEqual(self._profil(klic="p" + "A" * 22).status, 404)   # cizí vymyšlený klíč nezaloží
+
+    def test_overeni_s_jinou_adresou_heslo_neposle(self):
+        posláno = []
+
+        class Dav:
+            def __init__(self, url, jmeno, heslo, nazev, slot=1, **_):
+                posláno.append((url, heslo))
+
+            def check(self):
+                return 1
+        self.r.dav_api = Dav
+        dav = {"dav1_url": "https://nas.local/dav", "dav1_username": "u", "dav1_password": "tajneDAV1"}
+        klic = self._profil(dav).data["klic"]
+        over = lambda n, h=None: self._post("/profil/over", {"klic": klic, "nastaveni": self._kousek(n)},
+                                           self.sprava if h is None else h)
+        self.assertTrue(over({**dav, "dav1_password": ""}).data["uloziste"][0]["ok"])
+        self.assertEqual(posláno.pop(), ("https://nas.local/dav", "tajneDAV1"))
+        over({**dav, "dav1_url": "https://utocnik.cz/dav", "dav1_password": ""})
+        self.assertEqual(posláno.pop(), ("https://utocnik.cz/dav", ""))
+        self.assertEqual(over(dav, {}).status, 403)   # bez přihlášení ani ověření
+        self.assertEqual(self.r.route(f"/c/{klic}/check", ZAKLAD).status, 403)
+        self.assertEqual(posláno, [])
+
+    def test_403_bez_opravneni(self):
+        klic = self._profil().data["klic"]
+        nikdo = {}
+        for cesta, data in (("/profil", {"nastaveni": KOUSEK}), ("/profil", {"nastaveni": KOUSEK, "klic": klic}),
+                            ("/profil/jmeno", {"klic": klic, "jmeno": "x"}), ("/profil/smazat", {"klic": klic}),
+                            ("/profily", {}), ("/profil/predat", {"klic": klic, "jmeno": ""}),
+                            ("/uzivatele", {}), ("/aplikace", {"rezim": 1}), ("/tovarni", {"potvrzeni": "SMAZAT"})):
+            self.assertEqual(self._post(cesta, data, nikdo).status, 403, cesta)
+        # režim 3: uživatel spravuje jen své
+        self._rezim(3)
+        pepa, jana = self._uzivatel("pepa"), self._uzivatel("jana")
+        pepuv = self._profil(hlavicky=pepa).data["klic"]
+        self.assertEqual(self.r.profily.zaznam(pepuv)["o"], "pepa")
+        self.assertEqual([p["klic"] for p in self._post("/profily", {}, pepa).data["profily"]], [pepuv])
+        self.assertEqual(self._post("/profily", {}, jana).data["profily"], [])
+        for cesta, data in (("/profil", {"nastaveni": KOUSEK, "klic": pepuv}), ("/profil/smazat", {"klic": pepuv}),
+                            ("/profil/jmeno", {"klic": pepuv, "jmeno": "x"}), ("/profil", {"nastaveni": KOUSEK, "klic": klic}),
+                            ("/profil/predat", {"klic": pepuv, "jmeno": "jana"}), ("/uzivatele", {})):
+            self.assertEqual(self._post(cesta, data, jana).status, 403, cesta)
+        html = self.r.route(f"/c/{pepuv}/configure", ZAKLAD, hlavicky=jana).html.replace(" ", "")
+        self.assertIn('"cizi":true', html)
+        self.assertNotIn("franta", html)
+        self.assertIn("franta", self.r.route(f"/c/{pepuv}/configure", ZAKLAD, hlavicky=pepa).html)
+        self.assertEqual(self._profil(klic=pepuv).status, 200)   # správce smí i cizí
+        self.assertEqual(self._post("/profil/smazat", {"klic": pepuv}, pepa).data["profily"], [])
+
+    def test_blokovany_uzivatel(self):
+        self._rezim(3)
+        pepa = self._uzivatel()
+        klic = self._profil(hlavicky=pepa).data["klic"]
+        self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 200)
+        self._post("/uzivatele/blokovat", {"jmeno": "pepa", "blokovat": True}, self.sprava)
+        self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 403)
+        self.assertEqual(self.r.route(f"/c/{klic}/play/abc", ZAKLAD).status, 403)
+        self.assertEqual(self.r.route(f"/c/{klic}/stream/movie/tt1.json", ZAKLAD).data["streams"][0]["name"], "⛔ Nokturno")
+        self.assertEqual(self._post("/profily", {}, pepa).status, 403)   # přihlášení přestalo platit
+        self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "pepa", "heslo": "heslo123"}).status, 403)
+        self._post("/uzivatele/blokovat", {"jmeno": "pepa", "blokovat": False}, self.sprava)
+        self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 200)
+
+    def test_prechod_rezimu_beze_zmeny_klicu(self):
+        klic = self._profil().data["klic"]
+        manifest = lambda: self.r.route(f"/c/{klic}/manifest.json", ZAKLAD)
+        puvodni = manifest().data
+        self._rezim(3)
+        self.assertEqual(manifest().data, puvodni)
+        self.assertEqual(self._post("/profily", {}, self.sprava).data["profily"][0]["o"], "")   # patří správci
+        pepa = self._uzivatel()
+        self.assertEqual(self._post("/profil/predat", {"klic": klic, "jmeno": "pepa"}, self.sprava).status, 200)
+        self.assertEqual(self._post("/profil/predat", {"klic": klic, "jmeno": "nikdo"}, self.sprava).status, 404)
+        self.assertEqual([p["klic"] for p in self._post("/profily", {}, pepa).data["profily"]], [klic])
+        self._rezim(2)
+        self.assertEqual(manifest().data, puvodni)
+        self.assertEqual(self._post("/profily", {}, pepa).status, 403)   # v režimu 2 se uživatel nepřihlásí
+        self._rezim(1)
+        self.assertEqual(manifest().data, puvodni)
+        self.assertEqual(self._profil().status, 404)
+        self.assertEqual(self.r.profily.zaznam(klic)["o"], "pepa")
+
+    def test_stare_adresy(self):
+        stara = lambda zbytek="/manifest.json": self.r.route(f"/c/{KOUSEK}{zbytek}", ZAKLAD)
+        self.assertEqual(stara().status, 200)
+        self._rezim(3)   # v režimu 3 výchozí vypnuto
+        self.assertEqual(stara().status, 403)
+        self.assertEqual(stara("/stream/movie/tt1.json").data["streams"][0]["name"], "⛔ Nokturno")
+        self.assertEqual(stara("/check").status, 403)
+        self.assertEqual(stara("/configure").status, 200)   # převod na profil projde
+        self._rezim(3, stare_adresy=True)
+        self.assertEqual(stara().status, 200)
+        self._rezim(2, stare_adresy=False)
+        self.assertEqual(stara().status, 403)
+        self._rezim(1)   # režim 1 bez nich nejde
+        self.assertEqual(stara().status, 200)
+
+    def test_obnovovaci_kod(self):
+        from nokturno import soukroma
+        self.assertRegex(self.obnova, r"^[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$")
+        ulozeno = json.dumps(soukroma.nacti_aplikaci(self.tmp.name))
+        self.assertNotIn(self.obnova, ulozeno)
+        self.assertNotIn(self.obnova.replace("-", ""), ulozeno)
+        self.assertEqual(self._post("/ucet/obnovit", {"kod": "AAAA-BBBB-CCCC-DDDD", "heslo": "nove1234"}).status, 403)
+        odp = self._post("/ucet/obnovit", {"kod": " " + self.obnova.lower().replace("-", " "), "heslo": "nove1234"})
+        self.assertEqual(odp.status, 200)
+        self.assertNotEqual(odp.data["obnova"], self.obnova)
+        self.assertEqual(self._post("/aplikace", {"stats": True}, self.sprava).status, 403)   # staré přihlášení neplatí
+        self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "martin", "heslo": "tajne123"}).status, 403)
+        self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "martin", "heslo": "nove1234"}).status, 200)
+        self.assertEqual(self._post("/ucet/obnovit", {"kod": self.obnova, "heslo": "jine1234"}).status, 403)   # jednou
+
+    def test_kod_pri_prvnim_spusteni_z_internetu(self):
+        from nokturno import spravce
+        with tempfile.TemporaryDirectory() as tmp:
+            self.r.spravce = spravce.Spravce(tmp)
+            udaje = {"jmeno": "martin", "heslo": "tajne123", "email": "m@x.cz"}
+            self.assertIn('"kod":true', self.r.route("/configure", ZAKLAD, klient="8.8.8.8").html.replace(" ", ""))
+            self.assertIn('"kod":false', self.r.route("/configure", ZAKLAD, klient="192.168.1.5").html.replace(" ", ""))
+            self.assertEqual(self._post("/spravce/nastavit", udaje, klient="8.8.8.8").status, 403)
+            self.assertEqual(self._post("/spravce/nastavit", udaje, {"X-Forwarded-For": "8.8.8.8"}, klient="127.0.0.1").status, 403)
+            self.assertEqual(self._post("/spravce/nastavit", {**udaje, "kod": self.r.spravce.kod.lower()}, klient="8.8.8.8").status, 200)
+            self.assertEqual(self.r.spravce.kod, "")
+
+    def test_stavajici_spravce_doplni_jmeno_a_email(self):
+        from nokturno import soukroma, spravce
+        with tempfile.TemporaryDirectory() as tmp:
+            soukroma.uloz_aplikaci(tmp, {"spravce": soukroma.hash_hesla("stare123")})   # správce z 9.12–10.x
+            self.r.spravce = spravce.Spravce(tmp)
+            self.assertIn('"spravce_bez_jmena":true', self.r.route("/configure", ZAKLAD).html.replace(" ", ""))
+            sprava = {"Cookie": self._cookie(self._post("/ucet/prihlasit", {"heslo": "stare123"}))}
+            self.assertIn('"doplnit":true', self.r.route("/configure", ZAKLAD, hlavicky=sprava).html.replace(" ", ""))
+            self.assertEqual(self._post("/aplikace", {"stats": True}, sprava).status, 403)
+            self.assertEqual(self._post("/profil", {"nastaveni": KOUSEK}, sprava).status, 403)
+            self.assertEqual(self._post("/spravce/udaje", {"jmeno": "martin", "email": "spatne"}, sprava).status, 400)
+            odp = self._post("/spravce/udaje", {"jmeno": "martin", "email": "m@x.cz"}, sprava)
+            self.assertRegex(odp.data["obnova"], r"^[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$")   # poprvé dostane obnovovací kód
+            self.assertEqual(self._post("/aplikace", {"stats": True}, sprava).status, 200)
+            self.assertIsNone(self._post("/spravce/udaje", {"jmeno": "martin", "email": "n@x.cz"}, sprava).data["obnova"])
+
+    def test_tovarni_nastaveni(self):
+        from nokturno import soukroma
+        self._rezim(3)
+        self._uzivatel()
+        klic = self._profil().data["klic"]
+        self._post("/aplikace", {"stats": False}, self.sprava)
+        self.assertEqual(self._post("/tovarni", {"potvrzeni": "smaž"}, self.sprava).status, 400)
+        self.assertEqual(self._post("/tovarni", {"potvrzeni": " smazat "}, self.sprava).status, 200)
+        app = soukroma.nacti_aplikaci(self.tmp.name)
+        self.assertEqual(app, {"stats": False})   # zůstanou jen statistiky
+        self.assertFalse(self.r.spravce.nastaveno)
+        self.assertTrue(self.r.spravce.kod)
+        self.assertEqual((self.r.rezim, self.r.uzivatele.seznam()), (2, []))
+        self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 404)
+        self.assertEqual(self._post("/profily", {}, self.sprava).status, 403)
+
+    def test_smazani_uzivatele_smaze_jeho_profily(self):
+        self._rezim(3)
+        pepa = self._uzivatel()
+        jeho = [self._profil(hlavicky=pepa).data["klic"] for _ in range(2)]
+        muj = self._profil().data["klic"]
+        self.assertEqual(self._post("/uzivatele/smazat", {"jmeno": "pepa"}, self.sprava).data["uzivatele"], [])
+        for klic in jeho:
+            self.assertEqual(self.r.route(f"/c/{klic}/manifest.json", ZAKLAD).status, 404)
+        self.assertEqual(self.r.route(f"/c/{muj}/manifest.json", ZAKLAD).status, 200)
+        self.assertEqual(self._post("/profily", {}, pepa).status, 403)
+
+    def test_prehled_a_vyuziti(self):
+        from nokturno import profily
+        self._rezim(3)
+        pepa = self._uzivatel()
+        klic = self._profil(hlavicky=pepa).data["klic"]
+        self.r.route(f"/c/{klic}/manifest.json", ZAKLAD)
+        for soubor in ("a", "a", "b"):   # přetáčení téhož souboru = jedno přehrání
+            self.r.vyuziti.aktivita(klic, prehrani=soubor)
+        u = self._post("/uzivatele", {}, self.sprava).data["uzivatele"][0]
+        self.assertEqual((u["jmeno"], u["profilu"], u["prehrani7"], u["prehrani30"], u["blokovany"]), ("pepa", 1, 2, 2, False))
+        self.assertGreater(u["posledni"], 0)
+        self.r.vyuziti.uloz()
+        self.assertEqual(profily.Vyuziti(self.tmp.name).souhrn([klic])[1:], (2, 2))
+        self.assertNotIn("tt", open(os.path.join(self.tmp.name, profily.VYUZITI)).read())   # jen čísla
+
+    def test_jmena_a_hesla_uzivatelu(self):
+        self.assertEqual(self._post("/uzivatele/pridat", {"jmeno": "martin", "heslo": "heslo123"}, self.sprava).status, 409)
+        self.assertEqual(self._post("/uzivatele/pridat", {"jmeno": "a b", "heslo": "heslo123"}, self.sprava).status, 400)
+        self.assertEqual(self._post("/uzivatele/pridat", {"jmeno": "pepa", "heslo": "krat"}, self.sprava).status, 400)
+        self._rezim(3)
+        pepa = self._uzivatel()
+        self.assertEqual(self._post("/profily", {}, self._uzivatel("jan.novak")).status, 200)   # tečka ve jméně
+        self.assertEqual(self._post("/uzivatele/pridat", {"jmeno": "PEPA", "heslo": "heslo123"}, self.sprava).status, 409)
+        self._post("/uzivatele/heslo", {"jmeno": "pepa", "heslo": "nove1234"}, self.sprava)
+        self.assertEqual(self._post("/profily", {}, pepa).status, 403)   # nové heslo zruší přihlášení
+        self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "pepa", "heslo": "nove1234"}).status, 200)
+
+    def test_limit_prihlaseni(self):
+        from nokturno import spravce
+        with mock.patch.object(spravce, "MAX_CHYB", 3):
+            for _ in range(3):
+                self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "martin", "heslo": "spatne"}).status, 403)
+            self.assertEqual(self._post("/ucet/prihlasit", {"jmeno": "martin", "heslo": "tajne123"}).status, 429)
+
+    def test_cookie_lax_a_odhlaseni(self):
+        odp = self._post("/ucet/odhlasit", {}, self.sprava)
+        self.assertTrue(all("SameSite=Lax" in v and "Max-Age=0" in v for k, v in odp.hlavicky if k == "Set-Cookie"))
+        self.assertEqual(len(odp.hlavicky), 2)   # správce i uživatel
+
+    @unittest.skipIf(os.name != "posix", "práva jen na POSIX")
+    def test_soubory_0600(self):
+        import stat
+        from nokturno import uzivatele
+        self._rezim(3)
+        self._uzivatel()
+        self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.tmp.name, uzivatele.UZIVATELE)).st_mode), 0o600)
 
 
 class TestStareKatalogyTmdb(unittest.TestCase):

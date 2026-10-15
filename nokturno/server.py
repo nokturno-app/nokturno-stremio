@@ -37,6 +37,7 @@ from .pady import Pady
 from .provoz import Provoz
 from . import cztor, kliky as kliky_zprav, sit, soukroma, tls
 from . import spravce as spravce_mod
+from .uzivatele import Uzivatele
 
 _LOGGER = logging.getLogger("nokturno")
 
@@ -170,12 +171,22 @@ def _udrzba_smycka(data_dir, interval_s=3600):
             _LOGGER.exception("úklid cache selhal")
 
 
+def _uklada_vyuziti(vyuziti, interval_s=300):
+    """Využití profilů (profily.Vyuziti) drží paměť, na disk jde jednou za 5 minut."""
+    while True:
+        time.sleep(interval_s)
+        try:
+            vyuziti.uloz()
+        except Exception:  # noqa: BLE001 – plný disk ani práva nesmí zastavit smyčku
+            _LOGGER.exception("uložení využití profilů selhalo")
+
+
 def potrebuje_heslo(cesta, router):
     """Formulář, profily a správa chtějí heslo (`NOKTURNO_HESLO`); úvodní stránka a cesty doplňku nikdy."""
     if not getattr(router, "heslo", ""):   # getattr: zkušební směrovače v testech heslo nemají
         return False
-    return bool(router._formular(cesta) or cesta in Router.PROFILY_CESTY
-                or cesta in ("/povolit", "/aplikace", "/aktualizace"))
+    return bool(router._formular(cesta) or cesta in Router.PROFILY_CESTY or cesta in Router.SPRAVA
+                or cesta == Router.OVERENI)
 
 
 def heslo_sedi(hlavicka, heslo):
@@ -488,7 +499,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._posli(Odpoved(status=413, text=""))
                 return
             telo = self.rfile.read(delka).decode("utf-8", "replace")
-            self._posli(self.server.router.post(self.path, telo, self.headers, zaklad=self._zaklad()))
+            self._posli(self.server.router.post(self.path, telo, self.headers, zaklad=self._zaklad(), klient=self._klient(),
+                                                verejny=je_verejny(self.headers, self.client_address[0])))
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, ssl.SSLError):
             pass
         except Exception:  # noqa: BLE001 – žádná chyba nesmí ukončit službu
@@ -626,10 +638,11 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
     # NOKTURNO_PROFILY=0: starý režim bez profilů, adresa doplňku nese celé nastavení
     server.router.profily_vypnute = os.environ.get("NOKTURNO_PROFILY", "").strip().lower() in ("0", "false", "ne", "no")
     server.router.heslo = os.environ.get("NOKTURNO_HESLO", "")   # volitelné heslo k formuláři a profilům
+    server.router.rezim_vychozi = server.router.rezim   # kam vrací tovární nastavení
     server.router.nastav_aplikaci(soukroma.nacti_aplikaci(data_dir))   # volby z /configure mají přednost
     server.router.spravce = spravce_mod.Spravce(data_dir)
-    if not server.router.spravce.nastaveno:
-        _LOGGER.warning("Aplikace zatím nemá správce. Otevři /configure a nastav heslo správce.")
+    server.router.uzivatele = Uzivatele(data_dir, server.router.spravce.limit)
+    server.router.spravce.ohlas()
     server.router.sdilena = os.environ.get("NOKTURNO_SDILENA", "").strip().lower() in ("1", "true", "ano", "yes")
     if server.router.sdilena:
         _LOGGER.info("sdílená instance: nastavení a ukládání profilů i z internetu")
@@ -647,6 +660,7 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
     server.provoz.na_zakazane = server.router.blokace.nastav_zakazane
     server.provoz.start()  # bez NOKTURNO_TRAFFIC_TOKEN se vlákno nespustí a nic se neměří
     threading.Thread(target=_udrzba_smycka, args=(data_dir,), daemon=True).start()
+    threading.Thread(target=_uklada_vyuziti, args=(server.router.vyuziti,), daemon=True).start()
     return server, zdroje
 
 

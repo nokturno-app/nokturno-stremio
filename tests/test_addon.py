@@ -1463,6 +1463,18 @@ class TestVlastniUloziste(unittest.TestCase):
         self.assertEqual(data, [{"slot": 1, "ok": True, "polozek": 5}])
         check.assert_called_once()
 
+    def test_formular_pusti_smb_adresu(self):
+        """Kontrola před uložením bere i smb:// a \\\\server (jako `normalize_url`), CZ i SK."""
+        import re
+        for cesta in ("/configure", "/configure?lang=sk"):
+            html = router().route(cesta, ZAKLAD).html
+            vzor = re.search(r'!/(\^\(\(https\?.*?)/i\.test\(url\)', html).group(1)
+            vzor = re.compile(vzor.replace("\\/", "/"), re.I)
+            for url in ("smb://192.168.1.10/config", "\\\\nas\\Video", "https://nas/", "davs://nas/"):
+                self.assertTrue(vzor.search(url), (cesta, url))
+            for url in ("ftp://nas/", "smb://"):
+                self.assertFalse(vzor.search(url), (cesta, url))
+
     def test_formular_ma_tri_uloziste(self):
         html = router().route("/configure", ZAKLAD).html
         for i in (1, 2, 3):

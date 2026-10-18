@@ -1434,7 +1434,7 @@ function problem(n = sHesly(nastaveni())) {
   for (const i of [1, 2, 3]) {
     const url = n["dav" + i + "_url"];
     if (!url && (n["dav" + i + "_username"] || n["dav" + i + "_password"])) return "Pri úložisku " + i + " chýba adresa.";
-    if (url && !/^(https?|davs?):\/\/[^\/]+/i.test(url)) return "Adresa úložiska " + i + " má začínať https://, http:// alebo davs://.";
+    if (url && !/^((https?|davs?|smb):\/\/[^\/]+|\\\\[^\\]+)/i.test(url)) return "Adresa úložiska " + i + " má začínať https://, http://, davs:// alebo smb://.";
   }
   return "";
 }

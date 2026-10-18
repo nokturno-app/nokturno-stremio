@@ -58,7 +58,7 @@ from .core.lib.webshare_api import WebshareApi, WebshareError
 from .core.lib.sledujteto_api import SledujtetoApi
 from .core.lib.fastshare_api import FastshareApi
 from .core.lib.prehrajto_api import PrehrajtoApi
-from .core.lib.storage_api import SLOTS, StorageApi
+from .core.lib.storage_api import SLOTS, open_storage
 from .core.lib.cztor_api import CztorError
 from .core.lib import mycat
 from . import config, cztor, mapping, profily, sit, soukroma
@@ -74,7 +74,7 @@ _LOGGER = logging.getLogger(__name__)
 # Umělé zdržení hledání streamů v sekundách (NOKTURNO_STREAM_DELAY v .env), výchozí 0.
 STREAM_DELAY = float(os.environ.get("NOKTURNO_STREAM_DELAY") or 0)
 
-VERZE = "11.0.0"
+VERZE = "11.2.2"
 TYPY = ("movie", "series")
 CHECK_LIMIT = (10, 5 * 60)   # ověření účtů z jedné adresy za 5 minut — jinak je /check relay pro hádání hesel
 # streamy z jedné IP klienta (IPv6 po /64, viz `klic_klienta`). Reálná data 2026-09-19: medián

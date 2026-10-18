@@ -1453,6 +1453,16 @@ class TestVlastniUloziste(unittest.TestCase):
         self.assertEqual(data, [{"slot": 1, "ok": True, "polozek": 2},
                                 {"slot": 3, "ok": False, "chyba": "špatné jméno nebo heslo"}])
 
+    def test_overeni_uloziste_smb(self):
+        """Ověření bere SMB stejně jako hledání (`open_storage`), ne jen WebDAV."""
+        from nokturno.core.lib.storage_api import SmbStorage
+        from unittest import mock
+        with mock.patch.object(SmbStorage, "check", return_value=5) as check:
+            data = router().check({"dav1_url": "smb://192.168.1.10/config",
+                                   "dav1_username": "u", "dav1_password": "p"}).data["uloziste"]
+        self.assertEqual(data, [{"slot": 1, "ok": True, "polozek": 5}])
+        check.assert_called_once()
+
     def test_formular_ma_tri_uloziste(self):
         html = router().route("/configure", ZAKLAD).html
         for i in (1, 2, 3):

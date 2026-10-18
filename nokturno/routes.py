@@ -412,7 +412,7 @@ class Router:
         self.st_api = SledujtetoApi
         self.fs_api = FastshareApi
         self.pt_api = PrehrajtoApi
-        self.dav_api = StorageApi
+        self.dav_api = open_storage
         self.check_okno = Okno(*CHECK_LIMIT)
         self.stream_okno = Okno(*STREAM_LIMIT)
         self.play_okno = Okno(*PLAY_LIMIT)

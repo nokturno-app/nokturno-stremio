@@ -869,6 +869,7 @@ class Router:
         """Jen z nastavení — jádro se kvůli manifestu nezakládá (viz `sources_from_options`)."""
         zdroje = config.sources_from_options(options)
         katalogy = self.katalogy.manifest(options, jazyk) if self.katalogy else []
+        katalogy += self.katalogy.hledani(jazyk) if katalogy else []
         data = mapping.manifest(self.verze, zdroje, nastaveno=bool(zdroje), katalogy=katalogy, nova_adresa=nova_adresa,
                                 jazyk=jazyk, koncerty=bool(self.katalogy and self.katalogy.ma_koncerty(options)))
         data["behaviorHints"]["configurable"] = True

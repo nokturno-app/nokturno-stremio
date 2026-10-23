@@ -868,7 +868,8 @@ class TestKatalogy(unittest.TestCase):
         kousek = config.encode(config.from_mapping({"ws_username": "u", "katalogy": "sosac.nove.dabing,sosac.nove.filmy,neexistuje,tmdb.trendy.filmy"}))
         m = self.r.route(f"/c/{kousek}/manifest.json", ZAKLAD).data
         self.assertEqual(m["resources"], ["stream", "catalog", {"name": "meta", "types": ["movie", "series"], "idPrefixes": ["tt"]}])
-        self.assertEqual([(c["type"], c["id"]) for c in m["catalogs"]], [("movie", "nokturno.sosac.nove.filmy")],
+        self.assertEqual([(c["type"], c["id"]) for c in m["catalogs"]], [("movie", "nokturno.sosac.nove.filmy"),
+                                                                       ("movie", "nokturno.hledat"), ("series", "nokturno.hledat")],
                          "zrušený katalog s dabingem (9.0.0) i neznámý se tiše ignorují")
 
     def test_meta_titulu_pro_klienty_bez_cinemety(self):
@@ -907,6 +908,30 @@ class TestKatalogy(unittest.TestCase):
             self.assertEqual(self.r.route(f"/c/{KOUSEK}{cesta}", ZAKLAD).status, 404, cesta)
         self.assertEqual(volani, [], "nesmyslné id se do TMDB ani Cinemety neposílá")
 
+    def test_hledani_pro_klienty_bez_cinemety(self):
+        """Nuvio bez Cinemety: hledání jde přes katalog `nokturno.hledat` (Sosáč, jinak Cinemeta)."""
+        dotazy = []
+
+        class Sosac:
+            def catalog(self, ctype, cid, search=None, **_kw):
+                dotazy.append(("sosac", ctype, search))
+                return [{"imdb_id": "tt0167331", "name": "Pelíšky", "year": "1999"}] if search == "pelisky" else []
+
+        class Cinemeta:
+            def catalog(self, ctype, cid, search=None, **_kw):
+                dotazy.append(("cinemeta", ctype, search))
+                return [{"id": "tt0133093", "name": "The Matrix"}] if search == "matrix" else []
+        self.k.sosac, self.k.cinemeta = Sosac(), Cinemeta()
+        cesta = f"/c/{KOUSEK}/catalog/movie/nokturno.hledat/search=pelisky.json"
+        self.assertEqual([m["name"] for m in self.r.route(cesta, ZAKLAD).data["metas"]], ["Pelíšky"])
+        self.r.route(cesta, ZAKLAD)
+        self.assertEqual(dotazy, [("sosac", "movie", "pelisky")], "výsledek se pamatuje, Cinemeta se neptá")
+        hledej = lambda typ, q: self.r.route(f"/c/{KOUSEK}/catalog/{typ}/nokturno.hledat/search={q}.json", ZAKLAD)
+        self.assertEqual([m["id"] for m in hledej("movie", "matrix").data["metas"]], ["tt0133093"], "Sosáč nic → Cinemeta")
+        self.assertEqual(hledej("series", "nic").data["metas"], [])
+        self.assertEqual(self.r.route(f"/c/{KOUSEK}/catalog/movie/nokturno.hledat.json", ZAKLAD).data["metas"], [])
+        self.assertEqual(hledej("Koncerty", "x").status, 404)
+
     def test_katalog_sdileny_cachovany_a_strankovany(self):
         cesta = "/catalog/movie/nokturno.sosac.nove.filmy.json"
         data = self.r.route(f"/c/{KOUSEK}{cesta}", ZAKLAD).data
@@ -941,7 +966,7 @@ class TestKatalogy(unittest.TestCase):
         self.k.trend = Trend()
         kousek = config.encode(config.from_mapping({"ws_username": "u", "katalogy": "trend.nejsledovanejsi.filmy"}))
         m = self.r.route(f"/c/{kousek}/manifest.json", ZAKLAD).data
-        self.assertEqual([(c["type"], c["id"]) for c in m["catalogs"]],
+        self.assertEqual([(c["type"], c["id"]) for c in m["catalogs"] if c["id"] != "nokturno.hledat"],
                          [("movie", "nokturno.trend.nejsledovanejsi.filmy")])
         data = self.r.route(f"/c/{kousek}/catalog/movie/nokturno.trend.nejsledovanejsi.filmy.json", ZAKLAD).data
         self.assertEqual(data["metas"][0]["id"], "tt0133093")
@@ -1021,7 +1046,7 @@ class TestKatalogy(unittest.TestCase):
         self.assertIn("sosac.popularni.filmy", {r[0] for r in self.k.dostupne()})
         kousek = config.encode(config.from_mapping({"ws_username": "u", "katalogy": "sosac.popularni.filmy"}))
         m = self.r.route(f"/c/{kousek}/manifest.json", ZAKLAD).data
-        self.assertEqual([(c["type"], c["id"]) for c in m["catalogs"]], [("movie", "nokturno.sosac.popularni.filmy")])
+        self.assertEqual([(c["type"], c["id"]) for c in m["catalogs"] if c["id"] != "nokturno.hledat"], [("movie", "nokturno.sosac.popularni.filmy")])
         data = self.r.route(f"/c/{kousek}/catalog/movie/nokturno.sosac.popularni.filmy.json", ZAKLAD).data
         self.assertEqual(self.volani, [("movie", "moviesmostpopular", 0)])
         self.assertTrue(data["metas"])

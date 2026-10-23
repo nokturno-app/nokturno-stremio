@@ -11,6 +11,8 @@ z Cinemety a streamy od Nokturna jako u každého jiného titulu. Klienti bez Ci
 by ale detail neotevřeli („Žádný doplněk neposkytuje metadata“), proto doplněk se zapnutými
 katalogy vydává i `meta` pro `tt…` (`titul_meta`): TMDB s klíčem instance česky, jinak Cinemeta.
 Stremio se ptá doplňků v pořadí, Cinemeta je první, takže tam se nic nemění.
+Ze stejného důvodu mají zapnuté katalogy i hledání (`nokturno.hledat`, filmy a seriály): bez něj
+Nuvio bez Cinemety hlásí „Žádné prohledávatelné katalogy“. Zdroje v pořadí jádra: TMDB, Sosáč, Cinemeta.
 Titul bez IMDb id se vynechá (u Sosáče výjimečně čerstvé přírůstky).
 
 TMDB potřebuje API klíč. Ve formuláři ho záměrně nemáme, bere se klíč instance
@@ -154,6 +156,7 @@ STRANKA_VK = 100
 KONCERTY = "Koncerty"   # vlastní typ Stremia pro koncerty (volba profilu `koncerty_zanry`)
 KPREFIX = "nktk:"       # id: `nktk:<interpret>` (meta), `nktk:<interpret>:<koncert>` (stream)
 K_NOVE, K_ABECEDA = "koncerty.nove", "koncerty.abeceda"
+HLEDAT = "hledat"       # katalog jen pro hledání (`search` povinné), na domovské obrazovce není
 ZANRY_KONCERTU = {"czech": "Česká scéna", "slovak": "Slovenská scéna", "czech rock": "Český rock",
                   "classic rock": "Classic rock", "hard rock": "Hard rock", "metal": "Metal", "rock": "Rock",
                   "pop": "Pop", "punk": "Punk", "hip-hop": "Hip-hop", "jazz": "Jazz", "electronic": "Elektronika",
@@ -337,6 +340,28 @@ class Katalogy:
                              "extra": [{"name": "skip", "isRequired": False}]}
                             for klic, typ, _zdroj, _cid, cs, sk in self.vybrane(options)]
 
+    @staticmethod
+    def hledani(jazyk="cs"):
+        """Katalogy jen pro hledání; server je přidá k ostatním katalogům (bez nich manifest beze změny)."""
+        nazev = "Vyhľadávanie" if jazyk == "sk" else "Hledání"
+        return [{"type": typ, "id": PREFIX + HLEDAT, "name": nazev, "extra": [{"name": "search", "isRequired": True}]}
+                for typ in ("movie", "series")]
+
+    def _hledat(self, typ, dotaz):
+        """Náhledy podle názvu: TMDB (klíč instance), jinak Sosáč (česky), jinak Cinemeta."""
+        zdroje = ([lambda: self.tmdb.catalog(typ, "popular", search=dotaz)] if self.tmdb is not None else []) + [
+            lambda: self.sosac.catalog(typ, "top", search=dotaz),
+            lambda: self.cinemeta.catalog(typ, "top", search=dotaz)]
+        for zdroj in zdroje:
+            try:
+                nahledy = [p for p in (nahled(typ, m) for m in zdroj() or []) if p]
+            except Exception as err:  # noqa: BLE001 – výpadek zdroje: další v pořadí
+                _LOGGER.info("hledání %r: %s", dotaz, err)
+                continue
+            if nahledy:
+                return nahledy
+        return []
+
     def titul_meta(self, typ, imdb_id):
         """`meta` Stremia pro `tt…` — TMDB (klíč instance, česky), jinak Cinemeta. None = nic."""
         if typ not in ("movie", "series") or not re.match(r"^tt\d{1,10}$", str(imdb_id or "")):
@@ -360,6 +385,17 @@ class Katalogy:
             if typ != KONCERTY or not self.ma_koncerty(options):
                 return None
             return self._koncerty_polozky(options, klic, max(0, int(skip or 0)), zanr, jazyk, hledej)
+        if klic == HLEDAT:
+            if typ not in ("movie", "series"):
+                return None
+            if not hledej or skip:
+                return []
+            try:
+                return self.store.cached_if(f"stremio:hledat:{typ}:{hledej.lower()}", self.ttl,
+                                            lambda: self._hledat(typ, hledej)) or []
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning("hledání %r: %s", hledej, err)
+                return []
         if klic.startswith(VK):
             vlastni = self.vlastni(options)
             poradi = klic[len(VK):]

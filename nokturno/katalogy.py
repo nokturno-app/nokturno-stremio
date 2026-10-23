@@ -6,9 +6,12 @@ vlastní `Store` ve složce `katalogy`, platnost 6 h. Server se tak Sosáče i T
 nanejvýš jednou za 6 hodin na katalog a stránku, ať doplněk používá kolik lidí chce —
 to byla obava, kvůli které byly katalogy dřív zamítnuté (dokumentace, fáze 3).
 
-Položky nesou jen IMDb id (`tt…`). Detail titulu i díly seriálu si pak Stremio vezme
-z Cinemety a streamy od Nokturna jako u každého jiného titulu, takže doplněk nemusí
-dodávat metadata. Titul bez IMDb id se vynechá (u Sosáče výjimečně čerstvé přírůstky).
+Položky nesou jen IMDb id (`tt…`). Detail titulu i díly seriálu si Stremio vezme
+z Cinemety a streamy od Nokturna jako u každého jiného titulu. Klienti bez Cinemety (Nuvio)
+by ale detail neotevřeli („Žádný doplněk neposkytuje metadata“), proto doplněk se zapnutými
+katalogy vydává i `meta` pro `tt…` (`titul_meta`): TMDB s klíčem instance česky, jinak Cinemeta.
+Stremio se ptá doplňků v pořadí, Cinemeta je první, takže tam se nic nemění.
+Titul bez IMDb id se vynechá (u Sosáče výjimečně čerstvé přírůstky).
 
 TMDB potřebuje API klíč. Ve formuláři ho záměrně nemáme, bere se klíč instance
 z prostředí (`NOKTURNO_TMDB_KEY`); bez něj se katalogy TMDB nenabídnou.
@@ -30,12 +33,14 @@ dotaz stáhne tolik stránek dashboardu, kolik je potřeba.
 """
 import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 from . import config
 
 from .core.lib import concertcat
+from .core.lib.cinemeta_api import CinemetaApi
 from .core.lib import mycat as mycat_lib
 from .core.lib.sosac_direct import SosacDirect
 from .core.lib.store import Store
@@ -107,6 +112,39 @@ def nahled(typ, meta):
     return out
 
 
+def _datum(den):
+    """`2026-07-01` → ISO čas, jinak None — Stremio datum bez času nepřečte a zahodí celé meta."""
+    den = str(den or "")[:10]
+    return den + "T00:00:00.000Z" if re.match(r"^\d{4}-\d{2}-\d{2}$", den) else None
+
+
+def _bez_prazdnych(d):
+    return {k: v for k, v in d.items() if v not in (None, "", [])}
+
+
+def meta_stremia(typ, m):
+    """Detail z jádra (`TmdbApi.meta`) → `meta` Stremia; prázdná pole se vynechají."""
+    imdb = m.get("id") or ""
+    out = {"id": imdb, "type": typ, "name": m.get("name") or "", "posterShape": "poster",
+           "poster": m.get("poster") or METAHUB_POSTER.format(imdb),
+           "background": m.get("background"), "logo": m.get("logo"), "description": m.get("description"),
+           "releaseInfo": m.get("year"), "released": _datum(m.get("released")),
+           "genres": m.get("genres"), "director": m.get("director"), "writer": m.get("writer"),
+           "cast": [c["name"] for c in m.get("cast") or [] if c.get("name")],
+           "imdbRating": f"{float(m['imdbRating']):.1f}" if m.get("imdbRating") else None,
+           "runtime": f"{m['runtime']} min" if m.get("runtime") else None,
+           "trailers": [{"source": m["trailerYoutubeId"], "type": "Trailer"}] if m.get("trailerYoutubeId") else None}
+    if typ == "movie":
+        out["behaviorHints"] = {"defaultVideoId": imdb}
+    else:
+        out["videos"] = [_bez_prazdnych({"id": ep["id"], "title": ep.get("title") or f"{ep['season']}x{ep['episode']}",
+                                         "season": ep["season"], "episode": ep["episode"],
+                                         "released": _datum(ep.get("released")), "thumbnail": ep.get("thumbnail"),
+                                         "overview": ep.get("description")})
+                         for ep in m.get("videos") or []]
+    return _bez_prazdnych(out)
+
+
 # katalogy TMDB přes dashboard; nejlépe hodnocené jen s dost hlasy (jinak vyhrají obskurní tituly)
 TMDB_DASH = {"popular": {"sort_by": "popularity.desc"},
              "top_rated": {"sort_by": "vote_average.desc", "vote_count_gte": {"movie": "2000", "series": "1000"}}}
@@ -146,6 +184,7 @@ class Katalogy:
         self.sosac = SosacDirect(cache=self.store, index_store=self.store.index())
         self.tmdb = TmdbApi(tmdb_key, cache=self.store) if str(tmdb_key or "").strip() else None
         self.trend = TrendApi(cache=self.store)
+        self.cinemeta = CinemetaApi(cache=self.store)
         self.dash = dash   # DashApi, None = katalogy z dashboardu se nenabízejí
         self.overovani = None   # `overovani.Overovani` (server ho připojí); bez něj se `ov` ignoruje
 
@@ -297,6 +336,22 @@ class Katalogy:
         return dashboard + vlastni + self._koncerty_manifest(options, jazyk) + [{"type": typ, "id": PREFIX + klic, "name": sk if jazyk == "sk" else cs,
                              "extra": [{"name": "skip", "isRequired": False}]}
                             for klic, typ, _zdroj, _cid, cs, sk in self.vybrane(options)]
+
+    def titul_meta(self, typ, imdb_id):
+        """`meta` Stremia pro `tt…` — TMDB (klíč instance, česky), jinak Cinemeta. None = nic."""
+        if typ not in ("movie", "series") or not re.match(r"^tt\d{1,10}$", str(imdb_id or "")):
+            return None
+        if self.tmdb is not None:
+            try:
+                return meta_stremia(typ, self.tmdb.meta(typ, imdb_id))
+            except Exception as err:  # noqa: BLE001 – TMDB titul nezná / výpadek: zkusí se Cinemeta
+                _LOGGER.info("meta %s z TMDB: %s", imdb_id, err)
+        try:
+            meta = self.cinemeta.meta(typ, imdb_id)   # už ve tvaru Stremia
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("meta %s z Cinemety: %s", imdb_id, err)
+            return None
+        return meta if meta.get("id") else None
 
     def polozky(self, typ, katalog_id, skip=0, options=None, zanr="", jazyk="cs", hledej=""):
         """Náhledy jedné stránky katalogu. None = takový katalog tahle instance nemá."""

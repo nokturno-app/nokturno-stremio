@@ -1227,6 +1227,13 @@ class Router:
         meta = self.katalogy.koncert_meta(options, casti[2][:-len(".json")])
         return Odpoved(data={"meta": meta}) if meta else chyba(404, "Takové meta tu není.")
 
+    def titul_meta(self, casti):
+        """`/meta/<movie|series>/tt….json` → `{"meta": …}` pro klienty bez Cinemety (Nuvio)."""
+        meta = None
+        if self.katalogy is not None and len(casti) == 3 and casti[2].endswith(".json"):
+            meta = self.katalogy.titul_meta(casti[1], casti[2][:-len(".json")])
+        return Odpoved(data={"meta": meta}) if meta else chyba(404, "Takové meta tu není.")
+
     def koncert_streamy(self, engine, options, item_id, zaklad, kousek, jazyk="cs"):
         popisy = self.katalogy.koncert_soubory(options, item_id) if self.katalogy else []
         odp = mapping.streams_response(popisy, self._odkaz(zaklad, kousek), primy=_primy(engine), jazyk=jazyk)
@@ -1394,7 +1401,7 @@ class Router:
                 odp.utok = ("limit", config.fingerprint(options) if kousek else None)
                 return odp
             if casti[0] == "meta":
-                return self.koncert_meta(casti, options)
+                return self.koncert_meta(casti, options) if casti[1:2] == [KONCERTY] else self.titul_meta(casti)
             return self.katalog(casti, options, jazyk)
 
         if stara and casti and casti[0] in ("stream", "play"):

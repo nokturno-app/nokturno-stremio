@@ -867,9 +867,45 @@ class TestKatalogy(unittest.TestCase):
         self.assertEqual((m["resources"], m["catalogs"]), (["stream"], []), "bez volby se manifest nemění")
         kousek = config.encode(config.from_mapping({"ws_username": "u", "katalogy": "sosac.nove.dabing,sosac.nove.filmy,neexistuje,tmdb.trendy.filmy"}))
         m = self.r.route(f"/c/{kousek}/manifest.json", ZAKLAD).data
-        self.assertEqual(m["resources"], ["stream", "catalog"])
+        self.assertEqual(m["resources"], ["stream", "catalog", {"name": "meta", "types": ["movie", "series"], "idPrefixes": ["tt"]}])
         self.assertEqual([(c["type"], c["id"]) for c in m["catalogs"]], [("movie", "nokturno.sosac.nove.filmy")],
                          "zrušený katalog s dabingem (9.0.0) i neznámý se tiše ignorují")
+
+    def test_meta_titulu_pro_klienty_bez_cinemety(self):
+        """Nuvio bez Cinemety: detail titulu z katalogu dodá doplněk sám (TMDB, jinak Cinemeta)."""
+        volani = []
+
+        class Tmdb:
+            def meta(self, ctype, imdb_id):
+                volani.append(("tmdb", ctype, imdb_id))
+                if imdb_id in ("tt8", "tt9"):
+                    raise RuntimeError("nenalezen")
+                return {"id": imdb_id, "name": "Zrádci", "year": "2023", "released": "2023-03-09", "poster": "",
+                        "description": "popis", "genres": ["Reality"], "cast": [{"name": "A", "character": "x"}],
+                        "imdbRating": 7.04, "runtime": 60, "trailerYoutubeId": "", "logo": "",
+                        "videos": [{"id": f"{imdb_id}:1:1", "season": 1, "episode": 1, "title": "", "released": "",
+                                    "thumbnail": "", "description": "díl"}]}
+
+        class Cinemeta:
+            def meta(self, ctype, imdb_id):
+                volani.append(("cinemeta", ctype, imdb_id))
+                return {"id": imdb_id, "type": ctype, "name": "Matrix"} if imdb_id == "tt9" else {}
+        self.k.tmdb, self.k.cinemeta = Tmdb(), Cinemeta()
+        meta = self.r.route(f"/c/{KOUSEK}/meta/series/tt1.json", ZAKLAD).data["meta"]
+        self.assertEqual(meta, {"id": "tt1", "type": "series", "name": "Zrádci", "posterShape": "poster",
+                                "poster": "https://images.metahub.space/poster/medium/tt1/img", "description": "popis",
+                                "releaseInfo": "2023", "released": "2023-03-09T00:00:00.000Z", "genres": ["Reality"],
+                                "cast": ["A"], "imdbRating": "7.0", "runtime": "60 min",
+                                "videos": [{"id": "tt1:1:1", "title": "1x1", "season": 1, "episode": 1, "overview": "díl"}]})
+        film = self.r.route(f"/c/{KOUSEK}/meta/movie/tt2.json", ZAKLAD).data["meta"]
+        self.assertEqual((film["type"], film["behaviorHints"], "videos" in film), ("movie", {"defaultVideoId": "tt2"}, False))
+        self.assertEqual(self.r.route(f"/c/{KOUSEK}/meta/movie/tt9.json", ZAKLAD).data["meta"]["name"], "Matrix",
+                         "TMDB titul nezná → Cinemeta")
+        self.assertEqual(self.r.route(f"/c/{KOUSEK}/meta/movie/tt8.json", ZAKLAD).status, 404)
+        volani.clear()
+        for cesta in ("/meta/movie/sosacd_m_x.json", "/meta/movie/..%2Ftt1.json", "/meta/tv/tt1.json", "/meta/movie/tt1"):
+            self.assertEqual(self.r.route(f"/c/{KOUSEK}{cesta}", ZAKLAD).status, 404, cesta)
+        self.assertEqual(volani, [], "nesmyslné id se do TMDB ani Cinemety neposílá")
 
     def test_katalog_sdileny_cachovany_a_strankovany(self):
         cesta = "/catalog/movie/nokturno.sosac.nove.filmy.json"

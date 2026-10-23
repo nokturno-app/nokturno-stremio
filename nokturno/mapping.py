@@ -345,6 +345,9 @@ def manifest(verze, zdroje=(), nastaveno=True, katalogy=(), nova_adresa=None, ja
         "description": popis,
         "logo": "https://nokturno.stream/logo.png",
         "resources": (["stream", "catalog"] if katalogy else ["stream"])
+        # detail titulů z katalogů pro klienty bez Cinemety (Nuvio); `idPrefixes` tady nevadí,
+        # meta pro cizí tvary id stejně nemáme — výhrada výše platí jen pro `stream`
+        + ([{"name": "meta", "types": ["movie", "series"], "idPrefixes": ["tt"]}] if katalogy else [])
         + ([{"name": "meta", "types": ["Koncerty"], "idPrefixes": ["nktk:"]}] if koncerty else []),
         "types": ["movie", "series"] + (["Koncerty"] if koncerty else []),
         "catalogs": list(katalogy),

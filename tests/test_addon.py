@@ -680,6 +680,8 @@ class TestVlastniKatalogy(unittest.TestCase):
         self.assertNotIn("posl", vk[1])
         self.assertNotIn("z", vk[1])
         self.assertEqual(config.vk_parametry(vk[0])["year_from"], str(datetime.now().year - 2))
+        self.assertEqual(config.vk_parametry(vk[0])["with_release_type"], "4|5")   # ověřovaný, posledních X let
+        self.assertNotIn("with_release_type", config.vk_parametry(vk[1]))
 
     def test_overovani_krok_ukaze_jen_ok(self):
         import contextlib

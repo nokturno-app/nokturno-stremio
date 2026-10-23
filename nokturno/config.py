@@ -299,6 +299,7 @@ def vk_parametry(c):
               if c.get("zeme") else c.get("l") or "", "year_from": year_from,
               "year_to": year_to,
               "sort_by": "popularity.desc" if c.get("s") == mycat_lib.ALPHA else c.get("s") or ""}
+    params.update(mycat_lib.released_filter(c.get("t"), bool(c.get("ov")), c.get("s"), bool(c.get("posl"))))
     return {k: v for k, v in params.items() if v}
 
 

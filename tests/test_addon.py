@@ -954,6 +954,14 @@ class TestKatalogy(unittest.TestCase):
         self.assertIn('name="koncerty_zanry"', html)
         self.assertNotIn("vychozi_vlastni_katalogy", dir(config))
 
+    def test_vyloucene_zeme(self):
+        vk = config.vlastni_katalogy([{"n": "A", "t": "movie", "zeme_ne": ["JP", "XX", "KR", "JP", 5]},
+                                      {"n": "B", "t": "movie", "zeme": ["CZ"], "zeme_ne": ["JP"]}])
+        self.assertEqual(vk[0]["zeme_ne"], ["JP", "KR"])
+        self.assertEqual(config.vk_parametry(vk[0])["without_origin_country"], "JP|KR")
+        self.assertNotIn("zeme_ne", vk[1])   # výběr zemí původu má přednost
+        self.assertNotIn("without_origin_country", config.vk_parametry(vk[1]))
+
     def test_zeme_puvodu(self):
         from nokturno import config
         vk = config.vlastni_katalogy([{"n": "A", "t": "movie", "zeme": ["CZ", "XX", "SK", "CZ", 5]},

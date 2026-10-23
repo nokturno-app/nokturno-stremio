@@ -217,6 +217,10 @@ def _vk_jeden(c):
     zeme = mycat_lib.countries_of({"countries": [str(x) for x in c.get("zeme") or [] if isinstance(x, str)]})
     if zeme:   # země původu; starý „původní jazyk“ `l` dál platí, formulář ho při úpravě převede na zemi
         out["zeme"] = zeme
+    else:   # vyloučené země; s vybranými zeměmi původu nic (výběr má přednost)
+        ne = mycat_lib.countries_exclude_of({"countries_exclude": [str(x) for x in c.get("zeme_ne") or [] if isinstance(x, str)]})
+        if ne:
+            out["zeme_ne"] = ne
     if c.get("s") in VK_RAZENI:
         out["s"] = c["s"]
     if c.get("ov") in (1, True, "1", "true"):   # ověřování dostupnosti streamů (`overovani.py`)
@@ -289,6 +293,7 @@ def vk_parametry(c):
     params = {"with_genres": ("|" if c.get("j") == "or" else ",").join(str(x) for x in c.get("g") or []),
               "with_keywords": "|".join(VK_KLICOVA_SLOVA[k] for k in c.get("k") or []),
               "with_origin_country": "|".join(c.get("zeme") or []),
+              "without_origin_country": "|".join(c.get("zeme_ne") or []),
               "with_original_language": "|".join(dict.fromkeys(
                   lang for z in c.get("zeme") or [] for lang in mycat_lib.COUNTRY_LANGS.get(z, ())))
               if c.get("zeme") else c.get("l") or "", "year_from": year_from,

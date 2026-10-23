@@ -1201,12 +1201,12 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
 // --- vlastní katalogy: editor bez jmen polí, do adresy jde jen skryté pole „vk“ (JSON) ---
 (function () {
   const T = {"odebrat": "Odobrať", "nazev": "Názov", "typ": "Druh", "filmy": "Filmy", "serialy": "Seriály", "zanry": "Žánre (nič = všetky)", "jeden": "Stačí jeden z vybraných žánrov", "jazyk": "Pôvodný jazyk", "od": "Od roku", "do_": "Do roku", "razeni": "Zoradiť podľa", "vlastni": "Vlastný katalóg", "roky": "Roky", "rok_zadny": "Bez obmedzenia", "rok_od_do": "Od–do", "rok_posl": "Posledných X rokov", "rok_kolik": "Koľko posledných rokov", "ov": "Overovať dostupnosť streamov", "ov_napoveda": "Katalóg ukáže len tituly so streamom podľa týchto požiadaviek. Overuje sa na pozadí, kým aplikácia beží.", "kvalita": "Minimálna kvalita", "kvality": [["0", "Akákoľvek"], ["3", "Full HD"], ["3.5", "2K"], ["4", "4K"]], "zvuk": "Jazyk zvuku", "titulky": "Titulky", "stopy": [["", "Akékoľvek"], ["CZ", "Čeština"], ["SK", "Slovenčina"], ["CZ|SK", "Čeština alebo slovenčina"], ["EN", "Angličtina"], ["HU", "Maďarčina"]], "kanaly": "5.1 a viac", "zobraz": "Zobraziť zoradené podľa", "zobraz_v": [["found", "Novo nájdené"], ["pool", "Rovnako ako výber"], ["released", "Najnovšie vydanie"]], "zobraz_n": "„Rovnako ako výber“ je poradie, ako ho vrátil výber katalógu. „Novo nájdené“ zoraďuje podľa toho, kedy titul našlo overenie dostupnosti. „Najnovšie vydanie“ zoraďuje podľa dátumu vydania titulu.", "jazyky": [["", "Akýkoľvek"], ["cs", "Čeština"], ["sk", "Slovenčina"], ["cs|sk", "Čeština alebo slovenčina"], ["en", "Angličtina"], ["de", "Nemčina"], ["fr", "Francúzština"], ["es", "Španielčina"], ["it", "Taliančina"], ["pl", "Poľština"], ["hu", "Maďarčina"], ["ko", "Kórejčina"], ["ja", "Japončina"]], "temata": "Témy (stačí jedna, najviac 3)", "temata_v": [["fairy", "Rozprávky"], ["christmas", "Vianoce"], ["halloween", "Halloween"], ["newyear", "Silvester"], ["truestory", "Podľa skutočnej udalosti"], ["book", "Podľa knihy"], ["biography", "Životopisný"], ["superhero", "Superhrdinovia"], ["serialkiller", "Sériový vrah"], ["ww2", "2. svetová vojna"], ["martialarts", "Bojové umenia"], ["sport", "Šport"], ["alien", "Mimozemšťania"], ["timetravel", "Cestovanie v čase"], ["zombie", "Zombie"], ["ghost", "Duchovia"], ["vampire", "Upíri"], ["postapo", "Postapokalypsa"], ["heist", "Lúpež"], ["spy", "Špionáž"], ["survival", "Prežitie"], ["dog", "Psy"], ["dinosaur", "Dinosaury"]], "razeni_v": [["popularity.desc", "Obľúbenosti – čo sa teraz na TMDB najviac sleduje"], ["vote_average.desc", "Hodnotenia na TMDB – len tituly s dosť hlasmi (zvyčajne aspoň 100)"], ["primary_release_date.desc", "Dátumu vydania – najnovšie prvé"], ["primary_release_date.asc", "Dátumu vydania – najstaršie prvé"], ["title.asc", "Abecedy – obľúbené tituly podľa názvu"]], "zanry_v": {"movie": [[28, "Akčný"], [12, "Dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [14, "Fantasy"], [36, "Historický"], [27, "Horor"], [10402, "Hudobný"], [9648, "Mysteriózny"], [10749, "Romantický"], [878, "Sci-fi"], [53, "Thriller"], [10752, "Vojnový"], [37, "Western"]], "series": [[10759, "Akčný a dobrodružný"], [16, "Animovaný"], [35, "Komédia"], [80, "Krimi"], [99, "Dokumentárny"], [18, "Dráma"], [10751, "Rodinný"], [10762, "Pre deti"], [9648, "Mysteriózny"], [10764, "Reality"], [10765, "Sci-fi a fantasy"], [10768, "Vojnový a politický"], [37, "Western"]]}, "koncerty": "Koncerty", "tagy": [["czech", "Česká"], ["slovak", "Slovenská"], ["czech rock", "Český rock"], ["classic rock", "Classic rock"], ["hard rock", "Hard rock"], ["metal", "Metal"], ["rock", "Rock"], ["pop", "Pop"], ["punk", "Punk"], ["hip-hop", "Hip-hop"], ["jazz", "Jazz"], ["electronic", "Elektronická"], ["folk", "Folk"], ["classical", "Klasická"], ["reggae", "Reggae"], ["world", "World"]], "zobraz_k": [["pool", "Rovnako ako výber"], ["found", "Novo nájdené"], ["name", "Podľa abecedy"]], "hudba": "Hudobné žánre", "hudba_n": "Katalóg koncertov hľadá záznamy podľa obľúbených interpretov vybraných žánrov. Hľadá sa na pozadí, kým aplikácia beží, takže sa zapĺňa postupne."};
-  Object.assign(T, {"zeme": "Krajina pôvodu (najviac 5, nič = všetky)", "zeme_v": [["CZ", "Česko"], ["SK", "Slovensko"], ["XC", "Československo"], ["US", "USA"], ["GB", "Veľká Británia"], ["FR", "Francúzsko"], ["DE", "Nemecko"], ["IT", "Taliansko"], ["ES", "Španielsko"], ["PL", "Poľsko"], ["HU", "Maďarsko"], ["KR", "Južná Kórea"], ["JP", "Japonsko"], ["DK", "Dánsko"], ["SE", "Švédsko"], ["NO", "Nórsko"]], "sablona": "Zo šablóny", "sablona_zadna": "Prázdny katalóg", "rezim_tmdb": "Katalóg z TMDB", "rezim_tmdb_n": "Ukáže hneď všetky tituly podľa filtrov.", "rezim_ov": "Len tituly so streamom", "rezim_ov_n": "Na pozadí sa pri každom titule hľadá stream podľa tvojich požiadaviek (dabing, titulky, kvalita, 5.1). Katalóg sa plní postupne, kým aplikácia beží, a ukáže len to, čo sa dá prehrať.", "dub": "{} dabing", "sub": "titulky {}", "posl": "posledných {} rokov", "rozsah": "{}–{}", "od_": "od {}", "do__": "do {}", "zvuk": "Jazyk zvuku", "q_n": {"3": "Full HD", "3.5": "2K", "4": "4K"}});
+  Object.assign(T, {"zeme": "Krajina pôvodu (najviac 5, nič = všetky)", "zeme_v": [["CZ", "Česko"], ["SK", "Slovensko"], ["XC", "Československo"], ["US", "USA"], ["GB", "Veľká Británia"], ["FR", "Francúzsko"], ["DE", "Nemecko"], ["IT", "Taliansko"], ["ES", "Španielsko"], ["PL", "Poľsko"], ["HU", "Maďarsko"], ["KR", "Južná Kórea"], ["JP", "Japonsko"], ["DK", "Dánsko"], ["SE", "Švédsko"], ["NO", "Nórsko"]], "zeme_ne": "Vylúčiť krajiny (nič = nevylučovať; platí, len keď nie sú vybrané krajiny pôvodu)", "bez": "bez {}", "sablona": "Zo šablóny", "sablona_zadna": "Prázdny katalóg", "rezim_tmdb": "Katalóg z TMDB", "rezim_tmdb_n": "Ukáže hneď všetky tituly podľa filtrov.", "rezim_ov": "Len tituly so streamom", "rezim_ov_n": "Na pozadí sa pri každom titule hľadá stream podľa tvojich požiadaviek (dabing, titulky, kvalita, 5.1). Katalóg sa plní postupne, kým aplikácia beží, a ukáže len to, čo sa dá prehrať.", "dub": "{} dabing", "sub": "titulky {}", "posl": "posledných {} rokov", "rozsah": "{}–{}", "od_": "od {}", "do__": "do {}", "zvuk": "Jazyk zvuku", "q_n": {"3": "Full HD", "3.5": "2K", "4": "4K"}});
   const MAX = 20, obal = $("vk"), skryte = form.elements["vk"], pridat = $("vk-pridat");
   const L2Z = {"cs": ["CZ"], "sk": ["SK"], "cs|sk": ["CZ", "SK"], "sk|cs": ["CZ", "SK"], "de": ["DE"], "fr": ["FR"], "es": ["ES"],
                "it": ["IT"], "pl": ["PL"], "hu": ["HU"], "ko": ["KR"], "ja": ["JP"], "en": ["US", "GB"]};   // = mycat.migrate_lang
   const SPOL = {sort: "s", years: "posl", verify: "ov", q: "q", audio: "a", subs: "ti", surround: "ch", show: "z", join: "j",
-                genres: "g", keywords: "k", countries: "zeme"};   // pole šablony (mycat) → pole `vk`
+                genres: "g", keywords: "k", countries: "zeme", countries_exclude: "zeme_ne"};   // pole šablony (mycat) → pole `vk`
   let seznam = [], hotovo = false, aktivni = 0, taby = [];   // aktivni = katalog otevřený v záložce   // prekresli() před koncem skriptu sahá na ještě nedefinované `adresa`
   try { seznam = JSON.parse(skryte.value || "[]"); } catch (e) { seznam = []; }
   if (!Array.isArray(seznam)) seznam = [];
@@ -1221,6 +1221,8 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
     if (jmena.length) casti.push(jmena.join(", "));
     const z = (c.zeme || []).slice(0, 2).map((k) => zeme[k] || k);
     if (z.length) casti.push(z.join(", "));
+    const bez = (z.length ? [] : c.zeme_ne || []).slice(0, 2).map((k) => zeme[k] || k);
+    if (bez.length) casti.push(T.bez.replace("{}", bez.join(", ")));
     if (c.ov) {
       if (c.a) casti.push(T.dub.replace("{}", c.a.replace("|", "/")));
       if (c.ti) casti.push(T.sub.replace("{}", c.ti.replace("|", "/")));
@@ -1286,6 +1288,7 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
             if (box.checked && max && (c[druh] || []).length >= max) { box.checked = false; return; }
             c[druh] = (c[druh] || []).filter((x) => x !== id).concat(box.checked ? [id] : []);
             if (klic === "g") jeden.hidden = (c.g || []).length < 2;
+            if (klic === "zeme") { ne.hidden = (c.zeme || []).length > 0; if (!ne.hidden) return zmena(); delete c.zeme_ne; vykresliNe(); }
             zmena();
           });
           obalZ.append(el("label", {}, box, n));
@@ -1295,6 +1298,9 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
       const zanry = zaskrtavatka(T.zanry_v[c.t].map(([id, n]) => ["g", id, n]), "g");
       const temata = zaskrtavatka(T.temata_v.map(([id, n]) => ["k", id, n]), "k", 3);
       const zeme = zaskrtavatka(T.zeme_v.map(([id, n]) => ["zeme", id, n]), "zeme", 5);
+      let ne = el("div", {hidden: (c.zeme || []).length > 0});
+      const vykresliNe = () => { ne.replaceChildren(el("span", {className: "drobne", textContent: T.zeme_ne, style: "display:block;margin:0 0 .35rem"}), zaskrtavatka(T.zeme_v.map(([id, n]) => ["zeme_ne", id, n]), "zeme_ne")); };
+      vykresliNe();
       const jedenBox = el("input", {type: "checkbox", checked: c.j === "or"});
       jedenBox.addEventListener("change", () => { c.j = jedenBox.checked ? "or" : "and"; uloz(); });
       const jeden = el("label", {className: "prepinac", hidden: (c.g || []).length < 2}, jedenBox, el("span", {}, el("strong", {textContent: T.jeden})));
@@ -1348,7 +1354,7 @@ const SABLONY = __SABLONY__;   // šablony vlastních katalogů (mycat.TEMPLATES
         el("div", {className: "dvojice"}, pole(T.typ, typ), pole(T.sablona, sablona)),
         rezim(false, T.rezim_tmdb, T.rezim_tmdb_n), rezim(true, T.rezim_ov, T.rezim_ov_n),
         popisek(T.zanry), zanry, jeden, popisek(T.temata), temata,
-        popisek(T.zeme), zeme,
+        popisek(T.zeme), zeme, ne,
         el("div", {className: "dvojice"}, pole(T.roky, rezimRoku), pole(T.razeni, razeni)), odDo, poslPole,
         ovBlok,
         pole(T.nazev, nazev),

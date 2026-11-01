@@ -4251,3 +4251,42 @@ class TestStareKatalogyTmdb(unittest.TestCase):
         self.assertEqual(sorted((c["t"], c["s"]) for c in vk), [("movie", "popularity.desc"), ("series", "vote_average.desc")])
         self.assertEqual(config.from_mapping({"vk": opts[config.VK_KLIC], "katalogy": "tmdb.popularni.filmy"})[config.VK_KLIC],
                          opts[config.VK_KLIC], "podruhé nic nepřibude")
+
+
+class TestHttpsTicheSpojeni(unittest.TestCase):
+    """Spojení bez TLS handshaku nesmí zablokovat HTTPS posluchač (Stremio v HA přestalo odpovídat)."""
+
+    def test_tiche_spojeni_neblokuje(self):
+        import shutil
+        import socket
+        import ssl
+        import subprocess
+        import types
+        from nokturno import server as srv
+        if not shutil.which("openssl"):
+            self.skipTest("chybí openssl")
+        with tempfile.TemporaryDirectory() as d:
+            cert, klic = os.path.join(d, "c.pem"), os.path.join(d, "k.pem")
+            subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", klic,
+                            "-out", cert, "-days", "1", "-subj", "/CN=localhost"], check=True, capture_output=True)
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ctx.load_cert_chain(cert, klic)
+            puvodni = types.SimpleNamespace(router=mock.Mock(), pady=mock.Mock(), provoz=mock.Mock())
+            with mock.patch.object(srv.tls, "kontext", return_value=ctx), \
+                    mock.patch.object(srv.tls, "dns_funguje", return_value=True):
+                https = srv.spust_https(puvodni, "127.0.0.1", 0, d)
+            try:
+                port = https.server_address[1]
+                tichy = socket.create_connection(("127.0.0.1", port))   # žádný ClientHello
+                try:
+                    klient = ssl.create_default_context()
+                    klient.check_hostname = False
+                    klient.verify_mode = ssl.CERT_NONE
+                    with socket.create_connection(("127.0.0.1", port), timeout=5) as s, \
+                            klient.wrap_socket(s) as t:
+                        self.assertTrue(t.version())   # handshake prošel i s tichým spojením vedle
+                finally:
+                    tichy.close()
+            finally:
+                https.shutdown()
+                https.server_close()

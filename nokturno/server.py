@@ -671,7 +671,9 @@ def spust_https(server, host, port, slozka):
     if ctx is None:
         return None
     https = Server((host, port), Handler)
-    https.socket = ctx.wrap_socket(https.socket, server_side=True)
+    # handshake až ve vlákně spojení pod `Handler.timeout`; v `accept()` by jedno tiché
+    # spojení (TV usnula, spadla Wi-Fi) zablokovalo celý posluchač až do restartu
+    https.socket = ctx.wrap_socket(https.socket, server_side=True, do_handshake_on_connect=False)
     https.schema = "https"
     for jmeno in ("router", "pady", "provoz"):
         setattr(https, jmeno, getattr(server, jmeno))

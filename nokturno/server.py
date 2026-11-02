@@ -18,6 +18,7 @@ import ssl
 import sys
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -56,6 +57,53 @@ VYCHOZI_DATA = "./data"      # cache a mezipaměť jádra; v kontejneru svazek
 # je 54, za útočnou noc 18. → 19. 9. to bylo 146. Odtud 400: čtyřnásobek běžné
 # špičky a s rezervou nad útok. Nečinné vlákno stojí jen svůj zásobník, ne procesor.
 MAX_SPOJENI = int(os.environ.get("NOKTURNO_MAX_SPOJENI", "400"))
+
+
+# Diagnostika „doplněk po čase nic nenajde, v logu ticho" (Discord, 2026-11-02): bez `--debug`
+# se dřív nedalo poznat, jestli dotaz vůbec dorazil, visí v jádře, nebo ho odmítl limit.
+_SLEDOVANE_RE = re.compile(r"^(?:/c/[^/]+)?/(?:stream|catalog|meta)/")
+ZASEKNUTY_S = 60             # obsluha delší než tohle → WARNING se zásobníkem vlákna
+_BEZICI = {}                 # id vlákna → [začátek, cesta, nahlášeno]
+_BEZICI_ZAMEK = threading.Lock()
+_ODMITNUTI = {"posledni": 0.0, "pocet": 0}
+
+
+def _hlidac_zaseknutych(interval_s=15):
+    """Na pozadí: dotaz na streamy/katalog/meta, který běží přes `ZASEKNUTY_S`, se jednou ohlásí
+    i se zásobníkem, ať je vidět, kde visí (zámek, fond vláken, síť bez timeoutu)."""
+    while True:
+        time.sleep(interval_s)
+        try:
+            _zkontroluj_zaseknute()
+        except Exception:  # noqa: BLE001 – diagnostika nesmí skončit
+            _LOGGER.debug("hlídač zaseknutých dotazů selhal", exc_info=True)
+
+
+def _zkontroluj_zaseknute():
+    """Jedno kolo hlídače; vrací počet nově ohlášených dotazů."""
+    ted = time.monotonic()
+    with _BEZICI_ZAMEK:
+        dlouhe = [(tid, z) for tid, z in _BEZICI.items() if not z[2] and ted - z[0] > ZASEKNUTY_S]
+        for _, z in dlouhe:
+            z[2] = True
+    if not dlouhe:
+        return 0
+    ramce = sys._current_frames()   # noqa: SLF001 – jediný způsob, jak získat zásobník cizího vlákna
+    for tid, (zacatek, cesta, _) in dlouhe:
+        zasobnik = "".join(traceback.format_stack(ramce[tid])) if tid in ramce else "(vlákno už skončilo)\n"
+        _LOGGER.warning("dotaz běží %d s: %s\n%s", ted - zacatek, cesta, zasobnik.rstrip())
+    return len(dlouhe)
+
+
+def _hlas_odmitnuti(duvod, cesta):
+    """Odmítnutí limitem nebo blokací do logu — nejvýš jednou za minutu, zbytek jako počet."""
+    ted = time.monotonic()
+    _ODMITNUTI["pocet"] += 1
+    if ted - _ODMITNUTI["posledni"] < 60:
+        return
+    _LOGGER.warning("odmítnuto (%s): %s, za poslední minutu odmítnutí celkem %d",
+                    duvod, cesta, _ODMITNUTI["pocet"])
+    _ODMITNUTI["posledni"], _ODMITNUTI["pocet"] = ted, 0
 
 
 _CORS_RE = re.compile(r"^(?:/c/[^/]+)?/(?:manifest\.json|health|stream/.+\.json|catalog/.+\.json|meta/.+\.json|play/.+)$")
@@ -408,6 +456,8 @@ class Handler(BaseHTTPRequestHandler):
     def _posli(self, odpoved):
         self._utok = getattr(odpoved, "utok", None)
         telo, typ = odpoved.body
+        if self._utok:
+            _hlas_odmitnuti(self._utok[0], bezpecna_cesta(self.path))
         self.send_response(odpoved.status)
         self._odeslano = True   # od teď už nejde poslat druhou odpověď (viz do_GET)
         if self._utok:
@@ -453,6 +503,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self._odeslano = False
         self._zacni()
+        sledovat = bool(_SLEDOVANE_RE.match(self.path or ""))
+        if sledovat:
+            cesta = bezpecna_cesta(self.path)
+            _LOGGER.info("dotaz %s (%s)", cesta, klient_z_useragent(self.headers.get("User-Agent")) or "?")
+            with _BEZICI_ZAMEK:
+                _BEZICI[threading.get_ident()] = [time.monotonic(), cesta, False]
         try:
             if self._vyzvi_k_heslu():
                 return
@@ -485,6 +541,9 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001 – klient už mohl spojení zavřít
                 self.close_connection = True
         finally:
+            if sledovat:
+                with _BEZICI_ZAMEK:
+                    _BEZICI.pop(threading.get_ident(), None)
             self._nahlas()
 
     def do_POST(self):
@@ -660,6 +719,7 @@ def vytvor_server(host="0.0.0.0", port=VYCHOZI_PORT, data_dir=VYCHOZI_DATA, opti
     server.provoz.na_zakazane = server.router.blokace.nastav_zakazane
     server.provoz.start()  # bez NOKTURNO_TRAFFIC_TOKEN se vlákno nespustí a nic se neměří
     threading.Thread(target=_udrzba_smycka, args=(data_dir,), daemon=True).start()
+    threading.Thread(target=_hlidac_zaseknutych, daemon=True).start()
     threading.Thread(target=_uklada_vyuziti, args=(server.router.vyuziti,), daemon=True).start()
     return server, zdroje
 

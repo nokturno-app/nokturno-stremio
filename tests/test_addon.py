@@ -4253,6 +4253,64 @@ class TestStareKatalogyTmdb(unittest.TestCase):
                          opts[config.VK_KLIC], "podruhé nic nepřibude")
 
 
+class TestDiagnostikaDotazu(unittest.TestCase):
+    """Log příchodu dotazu, hlídač zaseknutých obsluh a odmítnutí limitem („v logu ticho")."""
+
+    def setUp(self):
+        # modul logování vypíná (setUpModule), tady ho testujeme
+        logging.disable(logging.NOTSET)
+        self.addCleanup(logging.disable, logging.CRITICAL)
+
+    def test_prichod_a_zaseknuty_dotaz_v_logu(self):
+        import http.client
+        import threading
+        import types
+        from nokturno import server as srv
+        uvnitr, pustit = threading.Event(), threading.Event()
+
+        def route(*a, **k):
+            uvnitr.set()
+            pustit.wait(10)
+            return srv.Odpoved(data={"streams": []})
+        router = types.SimpleNamespace(route=route, heslo="")
+        s = srv.Server(("127.0.0.1", 0), srv.Handler)
+        s.router, s.provoz, s.pady = router, None, None
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+        try:
+            spojeni = http.client.HTTPConnection("127.0.0.1", s.server_address[1], timeout=10)
+            with self.assertLogs("nokturno", "INFO") as log:
+                spojeni.request("GET", "/stream/movie/tt0133093.json")
+                self.assertTrue(uvnitr.wait(5))
+                with mock.patch.object(srv, "ZASEKNUTY_S", -1):
+                    self.assertEqual(srv._zkontroluj_zaseknute(), 1)
+                    self.assertEqual(srv._zkontroluj_zaseknute(), 0, "jednou na dotaz")
+                pustit.set()
+                self.assertEqual(spojeni.getresponse().status, 200)
+            text = "\n".join(log.output)
+            self.assertIn("dotaz /stream/movie/tt0133093.json", text)
+            self.assertIn("dotaz běží", text)
+            self.assertIn("in route", text, "zásobník ukáže, kde obsluha visí")
+            spojeni.close()
+            import time
+            konec = time.monotonic() + 5     # úklid ve finally doběhne až po odeslání odpovědi
+            while srv._BEZICI and time.monotonic() < konec:
+                time.sleep(0.01)
+            self.assertEqual(srv._BEZICI, {}, "po odpovědi se dotaz přestane hlídat")
+        finally:
+            pustit.set()
+            s.shutdown()
+            s.server_close()
+
+    def test_odmitnuti_nejvys_jednou_za_minutu(self):
+        from nokturno import server as srv
+        with mock.patch.dict(srv._ODMITNUTI, {"posledni": -1e9, "pocet": 0}), \
+                self.assertLogs("nokturno", "WARNING") as log:
+            for _ in range(5):
+                srv._hlas_odmitnuti("limit", "/stream/movie/tt1.json")
+        self.assertEqual(len(log.output), 1)
+        self.assertIn("odmítnuto (limit)", log.output[0])
+
+
 class TestHttpsTicheSpojeni(unittest.TestCase):
     """Spojení bez TLS handshaku nesmí zablokovat HTTPS posluchač (Stremio v HA přestalo odpovídat)."""
 

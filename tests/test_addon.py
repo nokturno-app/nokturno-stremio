@@ -4348,3 +4348,46 @@ class TestHttpsTicheSpojeni(unittest.TestCase):
             finally:
                 https.shutdown()
                 https.server_close()
+
+
+class TestHlidacPosluchacu(unittest.TestCase):
+    """Proces žije, ale posluchač neodpovídá → zásobníky do logu i do hlášení, pod zavaděčem konec."""
+
+    def setUp(self):
+        logging.disable(logging.NOTSET)
+        self.addCleanup(logging.disable, logging.CRITICAL)
+
+    def test_zdravy_posluchac(self):
+        import threading
+        import types
+        from nokturno import server as srv
+        s = srv.Server(("127.0.0.1", 0), srv.Handler)
+        s.router = types.SimpleNamespace(route=lambda *a, **k: srv.Odpoved(data={"ok": True}), heslo="")
+        s.provoz = s.pady = None
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+        self.addCleanup(s.server_close)
+        self.addCleanup(s.shutdown)
+        hlidac = srv.HlidacPosluchacu([("HTTP", "0.0.0.0", s.server_address[1], False)])
+        self.assertFalse(hlidac.kolo())
+        self.assertEqual(hlidac.spatne, 0)
+
+    def test_hluchy_posluchac_nahlasi_po_trech_kolech(self):
+        import socket
+        from nokturno import server as srv
+        hluchy = socket.socket()          # přijme spojení do fronty jádra, ale nikdy neodpoví
+        hluchy.bind(("127.0.0.1", 0))
+        hluchy.listen(8)
+        self.addCleanup(hluchy.close)
+        pady = mock.Mock()
+        hlidac = srv.HlidacPosluchacu([("HTTPS", "127.0.0.1", hluchy.getsockname()[1], True)],
+                                      pady=pady, timeout_s=0.3)
+        with self.assertLogs("nokturno", "WARNING") as log:
+            self.assertFalse(hlidac.kolo())
+            self.assertFalse(hlidac.kolo())
+            self.assertTrue(hlidac.kolo())
+        text = "\n".join(log.output)
+        self.assertIn("neodpověděl (HTTPS)", text)
+        self.assertIn("MainThread", text, "zásobníky všech vláken")
+        pady.zaznamenej.assert_called_once()
+        self.assertIn("HTTPS", str(pady.zaznamenej.call_args[0][0]))
+        self.assertEqual(hlidac.spatne, 0, "další hlášení až po dalších třech neúspěších")

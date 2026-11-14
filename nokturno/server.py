@@ -106,6 +106,100 @@ def _hlas_odmitnuti(duvod, cesta):
     _ODMITNUTI["posledni"], _ODMITNUTI["pocet"] = ted, 0
 
 
+# Hlídač posluchačů (Discord, „doplněk po čase nic nenajde", 2026-11-14): na 12.4.4 nedorazil
+# do obsluhy ani jeden dotaz (chyběl i řádek „dotaz …"), proces přitom žil, takže zavaděč,
+# který hlídá jen konec procesu, nic nepoznal a pomohl až ruční restart. Hlídač se každou
+# minutu zeptá vlastních posluchačů na /health; po `HLIDAC_SELHANI` neúspěších za sebou
+# zapíše zásobníky všech vláken do logu i do hlášení o pádu a pod zavaděčem proces ukončí,
+# zavaděč ho spustí znovu.
+HLIDAC_S = 60
+HLIDAC_SELHANI = 3
+HLIDAC_TIMEOUT_S = 10
+
+
+def _zkus_posluchac(host, port, https=False, timeout=HLIDAC_TIMEOUT_S):
+    """True, když posluchač odpoví na /health stavem 200."""
+    import http.client   # noqa: PLC0415 – jen pro hlídač
+    if host in ("", "0.0.0.0"):
+        host = "127.0.0.1"
+    elif host == "::":
+        host = "::1"
+    if https:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False           # certifikát local-ip.co na 127.0.0.1 nesedí, jde o odezvu
+        ctx.verify_mode = ssl.CERT_NONE
+        spojeni = http.client.HTTPSConnection(host, port, timeout=timeout, context=ctx)
+    else:
+        spojeni = http.client.HTTPConnection(host, port, timeout=timeout)
+    try:
+        spojeni.request("GET", "/health", headers={"Connection": "close", "User-Agent": "nokturno-hlidac"})
+        return spojeni.getresponse().status == 200
+    except (OSError, http.client.HTTPException):
+        return False
+    finally:
+        spojeni.close()
+
+
+def _zasobniky_vlaken(ramcu=8):
+    """Řádek na vlákno: jméno a posledních pár rámců (soubor:funkce:řádek) – vejde se do hlášení o pádu."""
+    jmena = {t.ident: t.name for t in threading.enumerate()}
+    radky = []
+    for tid, ramec in sys._current_frames().items():   # noqa: SLF001 – zásobník cizího vlákna jinak nejde
+        cesta = " > ".join(f"{os.path.basename(r.filename)}:{r.name}:{r.lineno}"
+                           for r in traceback.extract_stack(ramec)[-ramcu:])
+        radky.append(f"{jmena.get(tid, tid)}: {cesta}")
+    return radky
+
+
+class HlidacPosluchacu:
+    """`posluchace` = [(jméno, host, port, https)]. `ukoncit` jen pod zavaděčem, který proces znovu spustí."""
+
+    def __init__(self, posluchace, pady=None, ukoncit=False, selhani=HLIDAC_SELHANI, timeout_s=HLIDAC_TIMEOUT_S):
+        self.posluchace = list(posluchace)
+        self.pady = pady
+        self.ukoncit = ukoncit
+        self.selhani = selhani
+        self.timeout_s = timeout_s
+        self.spatne = 0
+
+    def kolo(self):
+        """Jedno kolo; True = posluchače neodpověděly `selhani`× za sebou (už nahlášeno)."""
+        vadne = [jmeno for jmeno, host, port, https in self.posluchace
+                 if not _zkus_posluchac(host, port, https, self.timeout_s)]
+        if not vadne:
+            if self.spatne:
+                _LOGGER.info("posluchače zase odpovídají")
+            self.spatne = 0
+            return False
+        self.spatne += 1
+        _LOGGER.warning("posluchač neodpovídá na /health: %s (%d/%d)", ", ".join(vadne), self.spatne, self.selhani)
+        if self.spatne < self.selhani:
+            return False
+        self.spatne = 0
+        _LOGGER.error("doplněk %d× za sebou neodpověděl (%s), zásobníky vláken:", self.selhani, ", ".join(vadne))
+        for radek in _zasobniky_vlaken():
+            _LOGGER.error("  %s", radek)
+        if self.pady is not None:
+            try:
+                raise RuntimeError(f"posluchač neodpovídá: {', '.join(vadne)}")
+            except RuntimeError as chyba:
+                self.pady.zaznamenej(chyba, "/health")
+        return True
+
+    def bez(self, interval_s=HLIDAC_S):
+        while True:
+            time.sleep(interval_s)
+            try:
+                if self.kolo() and self.ukoncit:
+                    time.sleep(3)   # ať hlášení stihne odejít; nestihne-li, pošle ho start (`pady.odesli`)
+                    _LOGGER.error("ukončuji doplněk, zavaděč ho spustí znovu")
+                    for h in logging.getLogger().handlers:
+                        h.flush()
+                    os._exit(3)
+            except Exception:  # noqa: BLE001 – hlídač nesmí skončit
+                _LOGGER.debug("hlídač posluchačů selhal", exc_info=True)
+
+
 _CORS_RE = re.compile(r"^(?:/c/[^/]+)?/(?:manifest\.json|health|stream/.+\.json|catalog/.+\.json|meta/.+\.json|play/.+)$")
 
 
@@ -781,8 +875,13 @@ def main(argv=None):
     # `finally` neproběhlo a fronta provozu i nedoručená hlášení o pádech se zahodily
     import signal
     https_port = int(os.environ.get("NOKTURNO_HTTPS_PORT") or 0)
-    if https_port:
-        spust_https(server, args.host, https_port, os.path.join(args.data, "tls"))
+    posluchace = [("HTTP", args.host, args.port, False)]
+    if https_port and spust_https(server, args.host, https_port, os.path.join(args.data, "tls")) is not None:
+        posluchace.append(("HTTPS", args.host, https_port, True))
+    if os.environ.get("NOKTURNO_HLIDAC", "1").strip().lower() not in ("0", "false", "ne", "no"):
+        # ukončit jen pod zavaděčem (ten nastaví NOKTURNO_UPDATE_URL; APK ho má prázdné, běží v jeho procesu)
+        hlidac = HlidacPosluchacu(posluchace, pady=server.pady, ukoncit=bool(os.environ.get("NOKTURNO_UPDATE_URL")))
+        threading.Thread(target=hlidac.bez, daemon=True, name="nokturno-hlidac").start()
     try:
         signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
     except ValueError:

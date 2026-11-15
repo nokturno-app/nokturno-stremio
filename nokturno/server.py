@@ -41,6 +41,8 @@ from . import spravce as spravce_mod
 from .uzivatele import Uzivatele
 
 _LOGGER = logging.getLogger("nokturno")
+# Novější Python hlásí .mkv jako video/matroska, přehrávače znají video/x-matroska.
+mimetypes.add_type("video/x-matroska", ".mkv")
 
 VYCHOZI_PORT = 7127          # hned vedle Luny na 7126
 VYCHOZI_DATA = "./data"      # cache a mezipaměť jádra; v kontejneru svazek

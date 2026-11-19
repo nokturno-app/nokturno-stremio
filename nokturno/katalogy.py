@@ -32,6 +32,11 @@ požadavků, ověřuje je `overovani.py` na pozadí). Jdou v manifestu hned za k
 z dashboardu, tituly skládá dashboard (`DashApi.discover`, stránka po 20 titulech, cache 12 h
 sdílená podle parametrů, ne podle uživatele). Stremio stránkuje po 100, proto se na jeden
 dotaz stáhne tolik stránek dashboardu, kolik je potřeba.
+
+Vlastní úložiště (od 12.7.0): s nastaveným úložištěm (WebDAV/SMB) má manifest navíc katalog
+„Vlastní úložiště“ pro filmy i seriály — jen tituly, které v úložišti leží. Titul podle názvu
+souboru či složky určí jádro (`Engine.storage_titles`, stejně jako menu Moje úložiště v Kodi).
+Tenhle katalog na účtech závisí, takže se pro něj jádro založit musí (`engine` v `polozky`).
 """
 import logging
 import os
@@ -156,6 +161,9 @@ STRANKA_VK = 100
 KONCERTY = "Koncerty"   # vlastní typ Stremia pro koncerty (volba profilu `koncerty_zanry`)
 KPREFIX = "nktk:"       # id: `nktk:<interpret>` (meta), `nktk:<interpret>:<koncert>` (stream)
 K_NOVE, K_ABECEDA = "koncerty.nove", "koncerty.abeceda"
+ULOZISTE = "uloziste"   # tituly z vlastního úložiště: `nokturno.uloziste`, filmy i seriály
+ULOZISTE_NAZEV = {"cs": "Vlastní úložiště", "sk": "Vlastné úložisko"}
+ULOZISTE_DEADLINE = 8.0   # nestihnuté tituly doběhnou do cache jádra na pozadí, další načtení je ukáže
 HLEDAT = "hledat"       # katalog jen pro hledání (`search` povinné), na domovské obrazovce není
 ZANRY_KONCERTU = {"czech": "Česká scéna", "slovak": "Slovenská scéna", "czech rock": "Český rock",
                   "classic rock": "Classic rock", "hard rock": "Hard rock", "metal": "Metal", "rock": "Rock",
@@ -166,6 +174,10 @@ ZANRY_KONCERTU_SK = {"czech": "Česká scéna", "slovak": "Slovenská scéna", "
 ZDROJE_KONCERTU = {"dav": "Vlastní úložiště", "ws": "WebShare", "hs": "HellSpy", "fs": "FastShare"}
 STRANKA_DISCOVER = 20
 DISCOVER_STRAN = 10   # víc stránek dashboard nevydá (`DISCOVER_MAX_PAGE`)
+
+
+def ma_uloziste(options):
+    return any(str((options or {}).get(f"dav{n}_url") or "").strip() for n in (1, 2, 3))
 
 
 def katalogy_dashboardu(polozky, predpona=""):
@@ -307,6 +319,24 @@ class Katalogy:
                  "size_gb": round(f["size"] / 1000 ** 3, 2) if f.get("size") else 0,
                  "length_min": (f.get("duration") or 0) // 60} for f in k[1][k[2]]["files"]]
 
+    @staticmethod
+    def _uloziste_polozky(engine, typ):
+        """Náhledy titulů typu `typ` ze všech úložišť jádra, podle abecedy."""
+        cesty = []
+        for api in engine.storages:
+            try:
+                cesty += [f["path"] for f in api.files()]
+            except Exception as err:  # noqa: BLE001 – nedostupné úložiště: ostatní dál
+                _LOGGER.info("úložiště %s: %s", getattr(api, "name", "?"), err)
+        # ponytail: celý seznam při každé stránce; levné, soubory i tituly drží cache jádra
+        videne, out = set(), []
+        for _cesta, (meta, ctype, _s, _e) in engine.storage_titles(cesty, deadline=ULOZISTE_DEADLINE).items():
+            nahl = nahled(typ, meta) if ctype == typ else None
+            if nahl and nahl["id"] not in videne:
+                videne.add(nahl["id"])
+                out.append(nahl)
+        return sorted(out, key=lambda p: p["name"].casefold())
+
     def _vlastni_polozky(self, typ, cat, skip):
         """Náhledy `skip`–`skip+100` vlastního katalogu; stránky dashboardu souběžně."""
         if cat.get("s") == mycat_lib.ALPHA:   # nejoblíbenější podle filtrů, seřazené podle abecedy (stránky mají cache)
@@ -336,7 +366,10 @@ class Katalogy:
         vlastni = [{"type": c["t"], "id": f"{PREFIX}{VK}{i}", "name": c["n"],
                     "extra": [{"name": "skip", "isRequired": False}]}
                    for i, c in enumerate(self.vlastni(options))]
-        return dashboard + vlastni + self._koncerty_manifest(options, jazyk) + [{"type": typ, "id": PREFIX + klic, "name": sk if jazyk == "sk" else cs,
+        uloziste = [{"type": typ, "id": PREFIX + ULOZISTE, "name": ULOZISTE_NAZEV.get(jazyk, ULOZISTE_NAZEV["cs"]),
+                     "extra": [{"name": "skip", "isRequired": False}]}
+                    for typ in ("movie", "series")] if ma_uloziste(options) else []
+        return dashboard + vlastni + uloziste + self._koncerty_manifest(options, jazyk) + [{"type": typ, "id": PREFIX + klic, "name": sk if jazyk == "sk" else cs,
                              "extra": [{"name": "skip", "isRequired": False}]}
                             for klic, typ, _zdroj, _cid, cs, sk in self.vybrane(options)]
 
@@ -378,9 +411,19 @@ class Katalogy:
             return None
         return meta if meta.get("id") else None
 
-    def polozky(self, typ, katalog_id, skip=0, options=None, zanr="", jazyk="cs", hledej=""):
-        """Náhledy jedné stránky katalogu. None = takový katalog tahle instance nemá."""
+    def polozky(self, typ, katalog_id, skip=0, options=None, zanr="", jazyk="cs", hledej="", engine=None):
+        """Náhledy jedné stránky katalogu. None = takový katalog tahle instance nemá.
+        `engine` = funkce, která vrátí jádro pro `options` (jen katalog vlastního úložiště)."""
         klic = katalog_id[len(PREFIX):] if str(katalog_id).startswith(PREFIX) else ""
+        if klic == ULOZISTE:
+            if typ not in ("movie", "series") or engine is None or not ma_uloziste(options):
+                return None
+            skip = max(0, int(skip or 0))
+            try:
+                return self._uloziste_polozky(engine(), typ)[skip:skip + STRANKA_VK]
+            except Exception as err:  # noqa: BLE001 – limit nových jader, výpadek: prázdný katalog
+                _LOGGER.warning("katalog vlastního úložiště: %s", err)
+                return []
         if klic in (K_NOVE, K_ABECEDA):
             if typ != KONCERTY or not self.ma_koncerty(options):
                 return None

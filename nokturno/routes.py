@@ -1198,7 +1198,7 @@ class Router:
         return Odpoved(data=mapping.streams_response(popisy, self._odkaz(zaklad, kousek),
                                                       primy=_primy(engine), jazyk=jazyk, primo=primo))
 
-    def katalog(self, casti, options=None, jazyk="cs"):
+    def katalog(self, casti, options=None, jazyk="cs", engine=None):
         """`/catalog/<typ>/<id>.json` nebo `/catalog/<typ>/<id>/skip=<n>.json` → `{"metas": [...]}`."""
         if self.katalogy is None or len(casti) not in (3, 4) or not casti[-1].endswith(".json"):
             return chyba(404, "Takový katalog tu není.")
@@ -1216,7 +1216,7 @@ class Router:
             # každá hodnota skip je vlastní cache klíč a dotaz na zdroj; hlouběji Stremio nikdo neroluje
             return Odpoved(data={"metas": []})
         metas = self.katalogy.polozky(typ, katalog_id, skip, options, zanr=(dotaz.get("genre") or [""])[0][:40],
-                                      jazyk=jazyk, hledej=(dotaz.get("search") or [""])[0].strip()[:60])
+                                      jazyk=jazyk, hledej=(dotaz.get("search") or [""])[0].strip()[:60], engine=engine)
         if metas is None:
             return chyba(404, "Takový katalog tu není.")
         return Odpoved(data={"metas": metas})
@@ -1403,7 +1403,9 @@ class Router:
                 return odp
             if casti[0] == "meta":
                 return self.koncert_meta(casti, options) if casti[1:2] == [KONCERTY] else self.titul_meta(casti)
-            return self.katalog(casti, options, jazyk)
+            # jádro jen pro katalog vlastního úložiště (z internetu už bez lokálních úložišť, viz výše)
+            return self.katalog(casti, options, jazyk, engine=lambda: self.enginy.pro(
+                options, verejny=verejny, klient=self._klic_limitu(options, klient) if kousek else ""))
 
         if stara and casti and casti[0] in ("stream", "play"):
             # od 6.4.9 bez skutečných streamů: sdílené nastavení bez účtů a bez identity musí

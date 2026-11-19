@@ -872,6 +872,43 @@ class TestKatalogy(unittest.TestCase):
                                                                        ("movie", "nokturno.hledat"), ("series", "nokturno.hledat")],
                          "zrušený katalog s dabingem (9.0.0) i neznámý se tiše ignorují")
 
+    def test_katalog_vlastniho_uloziste(self):
+        """S úložištěm v nastavení katalog „Vlastní úložiště“ jen s tituly, které v něm leží."""
+        kousek = config.encode(config.from_mapping({"dav1_url": "http://nas.local:5005/video"}))
+        m = self.r.route(f"/c/{kousek}/manifest.json", ZAKLAD).data
+        self.assertIn(("movie", "nokturno.uloziste", "Vlastní úložiště"),
+                      [(c["type"], c["id"], c["name"]) for c in m["catalogs"]])
+        self.assertIn(("series", "nokturno.uloziste"), [(c["type"], c["id"]) for c in m["catalogs"]])
+
+        class Uloziste:
+            name = "NAS"
+
+            def files(self):
+                return [{"path": "Filmy/Matrix.1999.mkv"}, {"path": "Filmy/Matrix.1999.CZ.avi"},
+                        {"path": "Serialy/Polda/S01E01.mkv"}, {"path": "Filmy/Alien.1979.mkv"}, {"path": "neznamy.mkv"}]
+
+        class Rozbite:
+            def files(self):
+                raise OSError("nedostupné")
+
+        class Engine:
+            storages = [Rozbite(), Uloziste()]
+
+            def storage_titles(self, cesty, deadline=6.0):
+                tituly = {"Filmy/Matrix.1999.mkv": ({"imdb_id": "tt0133093", "name": "Matrix"}, "movie", None, None),
+                          "Filmy/Matrix.1999.CZ.avi": ({"imdb_id": "tt0133093", "name": "Matrix"}, "movie", None, None),
+                          "Filmy/Alien.1979.mkv": ({"imdb_id": "tt0078748", "name": "Vetřelec"}, "movie", None, None),
+                          "Serialy/Polda/S01E01.mkv": ({"imdb_id": "tt9999999", "name": "Polda"}, "series", 1, 1)}
+                return {c: tituly[c] for c in cesty if c in tituly}
+        self.r.enginy.pro = lambda *a, **k: Engine()
+        filmy = self.r.route(f"/c/{kousek}/catalog/movie/nokturno.uloziste.json", ZAKLAD).data["metas"]
+        self.assertEqual([p["id"] for p in filmy], ["tt0133093", "tt0078748"], "bez duplicit, podle abecedy")
+        serialy = self.r.route(f"/c/{kousek}/catalog/series/nokturno.uloziste.json", ZAKLAD).data["metas"]
+        self.assertEqual([p["name"] for p in serialy], ["Polda"])
+        bez = config.encode(config.from_mapping({"ws_username": "u"}))
+        self.assertEqual(self.r.route(f"/c/{bez}/catalog/movie/nokturno.uloziste.json", ZAKLAD).status, 404,
+                         "bez úložiště takový katalog není")
+
     def test_meta_titulu_pro_klienty_bez_cinemety(self):
         """Nuvio bez Cinemety: detail titulu z katalogu dodá doplněk sám (TMDB, jinak Cinemeta)."""
         volani = []

@@ -153,8 +153,14 @@ def _zasobniky_vlaken(ramcu=8):
     return radky
 
 
+def hlidac_ukoncit(env=os.environ):
+    """Ukončit proces jen pod zavaděčem (nastaví NOKTURNO_UPDATE_URL; APK ho má prázdné, běží v jeho procesu)
+    nebo v Dockeru (`NOKTURNO_HLIDAC_UKONCIT=1` v Dockerfile, restart převezme politika kontejneru)."""
+    return bool(env.get("NOKTURNO_UPDATE_URL")) or env.get("NOKTURNO_HLIDAC_UKONCIT", "").strip() == "1"
+
+
 class HlidacPosluchacu:
-    """`posluchace` = [(jméno, host, port, https)]. `ukoncit` jen pod zavaděčem, který proces znovu spustí."""
+    """`posluchace` = [(jméno, host, port, https)]. `ukoncit` jen tam, kde proces někdo znovu spustí (`hlidac_ukoncit`)."""
 
     def __init__(self, posluchace, pady=None, ukoncit=False, selhani=HLIDAC_SELHANI, timeout_s=HLIDAC_TIMEOUT_S):
         self.posluchace = list(posluchace)
@@ -881,8 +887,7 @@ def main(argv=None):
     if https_port and spust_https(server, args.host, https_port, os.path.join(args.data, "tls")) is not None:
         posluchace.append(("HTTPS", args.host, https_port, True))
     if os.environ.get("NOKTURNO_HLIDAC", "1").strip().lower() not in ("0", "false", "ne", "no"):
-        # ukončit jen pod zavaděčem (ten nastaví NOKTURNO_UPDATE_URL; APK ho má prázdné, běží v jeho procesu)
-        hlidac = HlidacPosluchacu(posluchace, pady=server.pady, ukoncit=bool(os.environ.get("NOKTURNO_UPDATE_URL")))
+        hlidac = HlidacPosluchacu(posluchace, pady=server.pady, ukoncit=hlidac_ukoncit())
         threading.Thread(target=hlidac.bez, daemon=True, name="nokturno-hlidac").start()
     try:
         signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())

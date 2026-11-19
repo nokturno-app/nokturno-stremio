@@ -13,7 +13,10 @@ COPY README.md LICENSE ./
 # restartu tahá znovu, viz docker-compose.yml
 ENV NOKTURNO_DATA=/data \
     NOKTURNO_PORT=7127 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    NOKTURNO_HLIDAC_UKONCIT=1
+# NOKTURNO_HLIDAC_UKONCIT: když doplněk přestane odpovídat, hlídač ukončí proces
+# a kontejner znovu spustí `restart: unless-stopped` (docker-compose.yml)
 RUN mkdir -p /data && chown nokturno:nokturno /data
 VOLUME ["/data"]
 USER nokturno

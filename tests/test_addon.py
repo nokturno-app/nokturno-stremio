@@ -4371,6 +4371,15 @@ class TestHlidacPosluchacu(unittest.TestCase):
         self.assertFalse(hlidac.kolo())
         self.assertEqual(hlidac.spatne, 0)
 
+    def test_ukoncit_pod_zavadecem_a_v_dockeru(self):
+        from nokturno import server as srv
+        self.assertFalse(srv.hlidac_ukoncit({}))
+        self.assertFalse(srv.hlidac_ukoncit({"NOKTURNO_UPDATE_URL": "", "NOKTURNO_HLIDAC_UKONCIT": "0"}))
+        self.assertTrue(srv.hlidac_ukoncit({"NOKTURNO_UPDATE_URL": "https://x/update.json"}))
+        self.assertTrue(srv.hlidac_ukoncit({"NOKTURNO_HLIDAC_UKONCIT": "1"}))
+        with open(os.path.join(os.path.dirname(__file__), "..", "Dockerfile"), encoding="utf-8") as f:
+            self.assertIn("NOKTURNO_HLIDAC_UKONCIT=1", f.read(), "Docker nemá zavaděč, restart musí převzít kontejner")
+
     def test_hluchy_posluchac_nahlasi_po_trech_kolech(self):
         import socket
         from nokturno import server as srv
